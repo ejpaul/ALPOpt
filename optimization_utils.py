@@ -11,7 +11,7 @@ import f90nml
 
 class vmecOptimization:
   def __init__(self,vmecInputFilename,mmax_sensitivity,
-             nmax_sensitivity,path_to_vmec_executable,name):
+             nmax_sensitivity,callVMEC_function,name):
     self.mmax_sensitivity = mmax_sensitivity
     self.nmax_sensitivity = nmax_sensitivity
     [mnmax_sensitivity,xm_sensitivity,xn_sensitivity] = \
@@ -19,7 +19,7 @@ class vmecOptimization:
     self.mnmax_sensitivity = mnmax_sensitivity
     self.xm_sensitivity = xm_sensitivity
     self.xn_sensitivity = xn_sensitivity
-    self.path_to_vmec_executable = path_to_vmec_executable
+    self.callVMEC_function = callVMEC_function
     self.counter = 0 # Counts number of function evals (used for naming directories)
     self.name = name # Name used for directories
     self.vmecInputFilename = vmecInputFilename
@@ -152,7 +152,7 @@ class vmecOptimization:
     f2.close()
 
     # Call VMEC with revised input file
-    exit_code = call_vmec(self.path_to_vmec_executable,input_file)
+    exit_code = self.call_vmec(input_file)
     # Read from new equilibrium
     outputFileName = "wout_"+input_file[6::]+".nc"
 
@@ -302,28 +302,16 @@ class vmecOptimization:
 
     return objective, gradient
   
-def call_vmec(path_to_vmec_executable,input_file):
-  print(os.getcwd())
-  with open('out.txt','w+') as fout:
-    with open('err.txt','w+') as ferr:
-      exit_code=subprocess.call([path_to_vmec_executable,input_file],\
-                          stdout=fout,stderr=ferr)
-      # reset file to read from it
-      fout.seek(0)
-      # save output (if any) in variable
-      output=fout.read()
-
-      # reset file to read from it
-      ferr.seek(0) 
-      # save errors (if any) in variable
-      errors = ferr.read()
-  
-  exit_code = subprocess.call([path_to_vmec_executable,input_file],\
-                               stdout=subprocess.PIPE)
-  if (exit_code != 0):
-    print('VMEC returned with an error (exit_code = '+str(exit_code)+')')
-    sys.exit(1)
-  return
+  def call_vmec(self,input_file):
+    self.callVMEC_function(input_file)
+    # Check for VMEC errors
+    wout_filename = "wout_"+input_file[6::]+".nc"
+    f = netcdf.netcdf_file(wout_filename,'r',mmap=False)
+    error_code = f.variables["ier_flag"][()]
+    if (error_code != 0):
+      print('VMEC completed with error code '+str(error_code))
+      sys.exit(1)
+    
   
 # Note that xn is not multiplied by nfp
 def init_modes(mmax,nmax):

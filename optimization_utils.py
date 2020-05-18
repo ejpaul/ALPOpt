@@ -46,7 +46,7 @@ class vmecOptimization:
   
   """
   def __init__(self,vmecInputFilename,mmax_sensitivity,
-             nmax_sensitivity,callVMEC_function,name,delta=10):
+             nmax_sensitivity,callVMEC_function,name,delta_curr=10,delta_pres=10):
     self.mmax_sensitivity = mmax_sensitivity
     self.nmax_sensitivity = nmax_sensitivity
     [mnmax_sensitivity,xm_sensitivity,xn_sensitivity] = \
@@ -338,6 +338,7 @@ class vmecOptimization:
   def vmec_shape_gradient(self,boundary=None,which_objective='iota',weight_function=axis_weight,update=True):
     if (which_objective=='iota'):
       print("Evaluating iota objective shape gradient.")
+      delta = self.delta_curr
     else:
       print("Error! vmec_shape_gradient called with incorrect value of"+which_objective)
       sys.exit(1)
@@ -354,7 +355,7 @@ class vmecOptimization:
 
     if (which_objective == 'iota'):
       It_half = vmecOutputObject.compute_current()
-      It_new = It_half + self.delta*weight_function(self.vmecOutputObject.s_half)
+      It_new = It_half + delta*weight_function(self.vmecOutputObject.s_half)
 
       [error_code, vmecOutput_delta] = self.evaluate_vmec(It=It_new)
       if (error_code != 0):
@@ -370,7 +371,7 @@ class vmecOptimization:
           f = interpolate.InterpolatedUnivariateSpline(theta_arclength_delta[izeta,:],Bz_delta[izeta,:])
           Bz_delta[izeta,:] = f(theta_arclength[izeta,:])
 
-      deltaB_dot_B = ((Bx_delta-Bx)*Bx + (By_delta-By)*By + (Bz_delta-Bz)*Bz)/self.delta
+      deltaB_dot_B = ((Bx_delta-Bx)*Bx + (By_delta-By)*By + (Bz_delta-Bz)*Bz)/delta
 
       shape_gradient = deltaB_dot_B/(2*np.pi*self.vmecOutputObject.mu0)
 

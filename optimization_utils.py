@@ -10,6 +10,37 @@ from scipy import interpolate
 import f90nml
 
 class vmecOptimization:
+  """
+  A class used for optimization of a VMEC equilibrium
+  
+  ...
+  Attributes
+  ---------
+  mmax_sensitivity (int) : maximum poloidal mode number of boundary to optimize 
+  nmax_sensitivity (int) : maximum toroidal mode number of boundary to optimize
+  mnmax_sensitivity (int) : total number of boundary modes to optimize
+  xm_sensitivity (int array) : poloidal mode numbers of boundary to optimize
+  xn_sensitivity (int array) : toroidal mode numbers of boundary to optimize
+  callVMEC_function (function) : takes vmecInputFilename (str) as sole input argument and
+    returns runs VMEC with given Fortran namelist. See callVMEC.py for examples.
+  counter (int) : Used for naming of directories for labeling VMEC function evaluations. 
+    Counter is incremented when a new boundary is evaluated. 
+  name (str) : Name used as prefix for directory names of new VMEC evaluations.
+  vmecInputFilename (str) : Fortran namelist for initial equilibrium evaluation. This
+    namelist will be modified as the boundary is modified. 
+  directory (str) : Home directory for optimization. 
+  mpol (int) : maximum poloidal mode number for VMEC calculations
+  ntor (int) : maximum toroidal mode number for VMEC calculations
+  mnmax (int) :  total number of modes for VMEC calculations
+  xm (int array) : poloidal mode numbers for VMEC calculations
+  xn (int array) : toroidal mode numbers for VMEc calculations
+  boundary (float array) : current set of boundary harmonics
+  boundary_opt (float array) : current set of boundary harmonics which are being optimized 
+    (subset of boundary)
+  vmecOutputObject (vmecOutput) : instance of object corresponding to most recent equilibrium
+    evaluation
+  
+  """
   def __init__(self,vmecInputFilename,mmax_sensitivity,
              nmax_sensitivity,callVMEC_function,name):
     self.mmax_sensitivity = mmax_sensitivity
@@ -41,9 +72,9 @@ class vmecOptimization:
     [rbc_input,zbs_input] = self.read_boundary_input(xn_input,xm_input)
     
     # mpol, ntor for calculaitons must be large enough for sensitivity required
-    self.mpol = max(mmax_sensitivity+1,mpol_input)
-    self.ntor = max(nmax_sensitivity,ntor_input)
-    [self.mnmax,self.xm,self.xn] = init_modes(self.mpol-1,self.ntor)
+    self.mmax = max(mmax_sensitivity,mpol_input-1)
+    self.nmax = max(nmax_sensitivity,ntor_input)
+    [self.mnmax,self.xm,self.xn] = init_modes(self.mmax,self.nmax)
     [mnmax_sensitivity,xm_sensitivity,xn_sensitivity] = init_modes(mmax_sensitivity,nmax_sensitivity)
 
     rmnc = np.zeros(self.mnmax)
@@ -61,13 +92,29 @@ class vmecOptimization:
       if (any(cond)):
         rmnc_opt[cond] = rbc_input[imn]
         zmns_opt[cond] = zbs_input[imn]
-    self.boundary = np.vstack((rmnc,zmns))   
-    self.boundary_opt = np.vstack((rmnc_opt,zmns_opt))
+    self.boundary = np.hstack((rmnc,zmns))   
+    self.boundary_opt = np.hstack((rmnc_opt,zmns_opt))
     
     self.vmecOutputObject = self.evaluate_vmec() # Current boundary evaluation
     
-  # If update = True, new equilibrium evaluation saved in self.vmecOutputObject and boundary is assigned to self.boundary
   def evaluate_vmec(self,boundary=None,It=None,update=True):
+    """
+    Evaluates VMEC equilibrium with specified boundary or toroidal current profile update
+    
+    boundary and It should not be specified simultaneously. If neither are specified, then 
+    
+    Parameters
+    ----------
+    boundary (float array) : values of boundary harmonics for VMEC evaluations
+    It (float array) : value of toroidal current on half grid VMEC mesh for prescription of profile 
+      with "ac_aux_f" Fortran namelist variable
+    update (bool) : if True, self.vmecOutputObject is updated and boundary is assigned to self.boundary
+    
+    Returns
+    ----------
+    vmecOutput_new (vmecOutput) : object corresponding to output of VMEC evaluations
+    
+    """
     if (os.getcwd()!=self.directory):
       print("Evaluate_vmec called from incorrect directory. Changing to "+self.directory)
       os.chdir(self.directory)
@@ -119,19 +166,19 @@ class vmecOptimization:
         if (write_condition):
           f2.write(line)
     if (boundary is not None):
-      f2.write("mpol = " + str(self.mpol) + "\n")
-      f2.write("ntor = " + str(self.ntor) + "\n")
+      f2.write("mpol = " + str(self.mmax+1) + "\n")
+      f2.write("ntor = " + str(self.nmax) + "\n")
       # Write RBC
       for imn in range(self.mnmax):
         f2.write('RBC('+str(int(self.xn[imn]))+","\
                  +str(int(self.xm[imn]))+") = "\
-                 +str(self.boundary[0,imn]))
+                 +str(self.boundary[imn]))
         f2.write("\n")
       # Write ZBS
       for imn in range(self.mnmax):
         f2.write('ZBS('+str(int(self.xn[imn]))+","\
                  +str(int(self.xm[imn]))+") = "\
-                 +str(self.boundary[1,imn]))
+                 +str(self.boundary[self.mnmax+imn]))
         f2.write("\n")
     if (It is not None):
       curtor = 1.5*It[-1] - 0.5*It[-2]
@@ -196,19 +243,19 @@ class vmecOptimization:
     
   # Update boundary_opt and boundary with new boundary coefficients
   def update_boundary_opt(self,boundary_opt_new):
-    rmnc_opt_new = boundary_opt_new[0,:]
-    zmns_opt_new = boundary_opt_new[1,:]
+    rmnc_opt_new = boundary_opt_new[0:self.mnmax_sensitivity]
+    zmns_opt_new = boundary_opt_new[self.mnmax_sensitivity::]
     self.boundary_opt = boundary_opt_new
 
-    rmnc_new = self.boundary[0,:]
-    zmns_new = self.boundary[1,:]
+    rmnc_new = self.boundary[0:self.mnmax]
+    zmns_new = self.boundary[self.mnmax::]
     for imn in range(self.mnmax_sensitivity):
       cond = np.logical_and((self.xm == self.xm_sensitivity[imn]),\
         (self.xn == self.xn_sensitivity[imn]))
       if (any(cond)):
         rmnc_new[cond] = rmnc_opt_new[imn]
         zmns_new[cond] = zmns_opt_new[imn]
-    self.boundary = np.vstack((rmnc_new,zmns_new))
+    self.boundary = np.hstack((rmnc_new,zmns_new))
     return
   
   # Call VMEC with boundary specified by boundaryObjective to evaluate which_objective
@@ -298,7 +345,7 @@ class vmecOptimization:
     [dfdrmnc,dfdzmns,xm_sensitivity,xn_sensitivity] = \
       parameter_derivatives(shape_gradient,vmecOutputObject,self.mmax_sensitivity,\
                                 self.nmax_sensitivity)
-    gradient = np.vstack((dfdrmnc,dfdzmns))
+    gradient = np.hstack((dfdrmnc,dfdzmns))
 
     return objective, gradient
   
@@ -310,8 +357,7 @@ class vmecOptimization:
     error_code = f.variables["ier_flag"][()]
     if (error_code != 0):
       print('VMEC completed with error code '+str(error_code))
-      sys.exit(1)
-    
+      sys.exit(1)    
   
 # Note that xn is not multiplied by nfp
 def init_modes(mmax,nmax):

@@ -9,6 +9,9 @@ from FortranNamelistTools import *
 from scipy import interpolate
 import f90nml
 
+def axis_weight(s):
+  return np.exp(-(s-0.1)**2/0.05**2)
+
 class vmecOptimization:
   """
   A class used for optimization of a VMEC equilibrium
@@ -39,10 +42,11 @@ class vmecOptimization:
     (subset of boundary)
   vmecOutputObject (vmecOutput) : instance of object corresponding to most recent equilibrium
     evaluation
+  delta (float) : defines size of current perturbation for adjoint shape gradient calculation
   
   """
   def __init__(self,vmecInputFilename,mmax_sensitivity,
-             nmax_sensitivity,callVMEC_function,name):
+             nmax_sensitivity,callVMEC_function,name,delta=10):
     self.mmax_sensitivity = mmax_sensitivity
     self.nmax_sensitivity = nmax_sensitivity
     [mnmax_sensitivity,xm_sensitivity,xn_sensitivity] = \
@@ -55,6 +59,7 @@ class vmecOptimization:
     self.name = name # Name used for directories
     self.vmecInputFilename = vmecInputFilename
     self.directory = os.getcwd()
+    self.delta = delta
     
     # Read items from Fortran namelist
     nml = f90nml.read(vmecInputFilename)
@@ -101,14 +106,15 @@ class vmecOptimization:
     """
     Evaluates VMEC equilibrium with specified boundary or toroidal current profile update
     
-    boundary and It should not be specified simultaneously. If neither are specified, then 
+    boundary and It should not be specified simultaneously. 
+    If neither are specified, then an exception is raised.
     
     Parameters
     ----------
     boundary (float array) : values of boundary harmonics for VMEC evaluations
     It (float array) : value of toroidal current on half grid VMEC mesh for prescription of profile 
       with "ac_aux_f" Fortran namelist variable
-    update (bool) : if True, self.vmecOutputObject is updated and boundary is assigned to self.boundary
+    update (bool) : if True, self.vmecOutputObject is updated and boundary is assigned to self.boundary_opt
     
     Returns
     ----------
@@ -210,8 +216,21 @@ class vmecOptimization:
     os.chdir("..")
     return vmecOutput_new
     
-  # Reads in rbc and zbs from input file
   def read_boundary_input(self,xn,xm):
+    """
+    Read in boundary harmonics (rbc, zbs) from Fortran namelist
+    
+    Parameters
+    ----------
+    xm (int array) : poloidal mode numbers to read
+    xn (int array) : toroidal mode numbers to read
+    
+    Returns
+    ----------
+    rbc (float array) : boundary harmonics for radial coordinate (same size as xm and xn)
+    zbs (float array) : boundary harmonics for height coordinate (same size as xm and xn)
+    
+    """
     nml = f90nml.read(self.vmecInputFilename)
     nml = nml["indata"]
     rbc_array = np.array(nml["rbc"]).T
@@ -259,7 +278,7 @@ class vmecOptimization:
     return
   
   # Call VMEC with boundary specified by boundaryObjective to evaluate which_objective
-  def evaluate_vmec_objective(self,boundary=None,which_objective=None,weight_function=None,update=True):
+  def evaluate_vmec_objective(self,boundary=None,which_objective='iota',weight_function=axis_weight,update=True):
     if (which_objective=='iota'):
       print("Evaluating iota objective.")
     else:
@@ -286,7 +305,7 @@ class vmecOptimization:
       return vmecOutputObject.evaluate_well_objective(weight_function)
 
   # If boundary is specified, new equilibrium will be specified
-  def vmec_shape_gradient(self,which_objective,weight_function,delta,boundary=None,update=True):
+  def vmec_shape_gradient(self,boundary=None,which_objective='iota',weight_function=axis_weight,update=True):
     if (which_objective=='iota'):
       print("Evaluating iota objective shape gradient.")
     else:
@@ -301,7 +320,7 @@ class vmecOptimization:
 
     if (which_objective == 'iota'):
       It_half = vmecOutputObject.compute_current()
-      It_new = It_half + delta*weight_function(self.vmecOutputObject.s_half)
+      It_new = It_half + self.delta*weight_function(self.vmecOutputObject.s_half)
 
       vmecOutput_delta = self.evaluate_vmec(It=It_new)
 
@@ -314,7 +333,7 @@ class vmecOptimization:
           f = interpolate.InterpolatedUnivariateSpline(theta_arclength_delta[izeta,:],Bz_delta[izeta,:])
           Bz_delta[izeta,:] = f(theta_arclength[izeta,:])
 
-      deltaB_dot_B = (Bx_delta-Bx)*Bx/delta + (By_delta-By)*By/delta + (Bz_delta-Bz)*Bz/delta
+      deltaB_dot_B = ((Bx_delta-Bx)*Bx + (By_delta-By)*By + (Bz_delta-Bz)*Bz)/self.delta
 
       shape_gradient = deltaB_dot_B/(2*np.pi*self.vmecOutputObject.mu0)
 
@@ -322,7 +341,7 @@ class vmecOptimization:
   
   # Call VMEC with boundary specified by boundaryObjective to evaluate which_objective and compute gradient
   # If boundary is not specified, boundary will not be updated
-  def evaluate_vmec_objective_grad(self,which_objective,weight_function,delta,boundary=None,update=True):
+  def evaluate_vmec_objective_grad(self,boundary=None,which_objective='iota',weight_function=axis_weight,update=True):
     if (which_objective=='iota'):
       print("Evaluating iota objective gradient.")
     else:
@@ -335,19 +354,15 @@ class vmecOptimization:
     else:
       vmecOutputObject = self.vmecOutputObject
 
-    # Compute objective
-    if (which_objective == 'iota'):
-      objective = vmecOutputObject.evaluate_iota_objective(weight_function)
-
     # Compute gradient
-    shape_gradient = self.vmec_shape_gradient(which_objective,weight_function,delta,update=update)
+    shape_gradient = self.vmec_shape_gradient(which_objective=which_objective,weight_function=weight_function,update=update)
 
     [dfdrmnc,dfdzmns,xm_sensitivity,xn_sensitivity] = \
       parameter_derivatives(shape_gradient,vmecOutputObject,self.mmax_sensitivity,\
                                 self.nmax_sensitivity)
     gradient = np.hstack((dfdrmnc,dfdzmns))
 
-    return objective, gradient
+    return gradient
   
   def call_vmec(self,input_file):
     self.callVMEC_function(input_file)

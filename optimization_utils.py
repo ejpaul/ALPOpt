@@ -59,7 +59,8 @@ class vmecOptimization:
     self.name = name # Name used for directories
     self.vmecInputFilename = vmecInputFilename
     self.directory = os.getcwd()
-    self.delta = delta
+    self.delta_pres = delta_pres
+    self.delta_curr = delta_curr
     
     # Read items from Fortran namelist
     nml = f90nml.read(vmecInputFilename)
@@ -103,9 +104,8 @@ class vmecOptimization:
     [error_code,self.vmecOutputObject] = self.evaluate_vmec() # Current boundary evaluation
     if (error_code != 0):
       print('Unable to evaluate base VMEC equilibrium in vmecOptimization constructor.')
-
     
-  def evaluate_vmec(self,boundary=None,It=None,update=True):
+  def evaluate_vmec(self,boundary=None,It=None,pres=None,update=True):
     """
     Evaluates VMEC equilibrium with specified boundary or toroidal current profile update
     
@@ -127,8 +127,9 @@ class vmecOptimization:
     if (os.getcwd()!=self.directory):
       print("Evaluate_vmec called from incorrect directory. Changing to "+self.directory)
       os.chdir(self.directory)
-    if ((boundary is not None) and (It is not None)):
-      print("evaluate_vmec called with perturbed boundary and current profile. This is not supported.")
+    if (np.count([It,pres,boundary]>1)):
+      print("evaluate_vmec called with more than one type of perturbation \
+      (boundary, It, pres). This behavior is not supported.")
       sys.exit(1)
     if (boundary is not None):
       # Update equilibrium count
@@ -179,16 +180,18 @@ class vmecOptimization:
       f2.write("ntor = " + str(self.nmax) + "\n")
       # Write RBC
       for imn in range(self.mnmax):
-        f2.write('RBC('+str(int(self.xn[imn]))+","\
-                 +str(int(self.xm[imn]))+") = "\
-                 +str(self.boundary[imn]))
-        f2.write("\n")
+        if (self.boundary[imn]!=0):
+          f2.write('RBC('+str(int(self.xn[imn]))+","\
+                   +str(int(self.xm[imn]))+") = "\
+                   +str(self.boundary[imn]))
+          f2.write("\n")
       # Write ZBS
       for imn in range(self.mnmax):
-        f2.write('ZBS('+str(int(self.xn[imn]))+","\
-                 +str(int(self.xm[imn]))+") = "\
-                 +str(self.boundary[self.mnmax+imn]))
-        f2.write("\n")
+        if (self.boundary[self.mnmax+imn]!=0):
+          f2.write('ZBS('+str(int(self.xn[imn]))+","\
+                   +str(int(self.xm[imn]))+") = "\
+                   +str(self.boundary[self.mnmax+imn]))
+          f2.write("\n")
     if (It is not None):
       curtor = 1.5*It[-1] - 0.5*It[-2]
       s_full = np.linspace(0,1,len(It)+1)
@@ -210,12 +213,13 @@ class vmecOptimization:
     # Call VMEC with revised input file
     exit_code = self.call_vmec(input_file)
       
-    # Read from new equilibrium
-    outputFileName = "wout_"+input_file[6::]+".nc"
+    if (exit_code !=0):
+      # Read from new equilibrium
+      outputFileName = "wout_"+input_file[6::]+".nc"
 
-    vmecOutput_new = readVmecOutput(outputFileName)
-    if (boundary is not None and update):
-      self.vmecOutputObject = vmecOutput_new
+      vmecOutput_new = readVmecOutput(outputFileName)
+      if (boundary is not None and update):
+        self.vmecOutputObject = vmecOutput_new
 
     os.chdir("..")
     return exit_code, vmecOutput_new

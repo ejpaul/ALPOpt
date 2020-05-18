@@ -264,7 +264,6 @@ class vmecOptimization:
     
     return rbc, zbs
     
-  # Update boundary_opt and boundary with new boundary coefficients
   def update_boundary_opt(self,boundary_opt_new):
     """
     Updates boundary harmonics at new evaluation point 
@@ -291,6 +290,14 @@ class vmecOptimization:
   
   # Call VMEC with boundary specified by boundaryObjective to evaluate which_objective
   def evaluate_vmec_objective(self,boundary=None,which_objective='iota',weight_function=axis_weight,update=True):
+    """
+    Evaluates vmec objective function with prescribed boundary
+    
+    Parameters
+    ----------
+    boundary (float array) : new boundary to evaluate. If None, objective will be computed from self.vmecOutputObject
+        
+    """
     if (which_objective=='iota'):
       print("Evaluating iota objective.")
     else:
@@ -303,6 +310,7 @@ class vmecOptimization:
     if (update==False):
       boundary_old = np.copy(self.boundary_opt)
     # Evaluate new equilibrium if necessary
+    error_code = 0
     if (boundary is not None and (boundary!=self.boundary_opt).any()):
       [error_code,vmecOutputObject] = self.evaluate_vmec(boundary=boundary,update=update)
       if (error_code != 0):

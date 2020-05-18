@@ -9,6 +9,10 @@ from FortranNamelistTools import *
 from scipy import interpolate
 import f90nml
 
+"""
+Required packages: nlopt, f90nml, scanf
+"""
+
 def axis_weight(s):
   return np.exp(-(s-0.1)**2/0.05**2)
 
@@ -46,7 +50,8 @@ class vmecOptimization:
   
   """
   def __init__(self,vmecInputFilename,mmax_sensitivity,
-             nmax_sensitivity,callVMEC_function,name,delta_curr=10,delta_pres=10):
+             nmax_sensitivity,callVMEC_function,name,delta_curr=10,delta_pres=10,
+             woutFilename=None):
     self.mmax_sensitivity = mmax_sensitivity
     self.nmax_sensitivity = nmax_sensitivity
     [mnmax_sensitivity,xm_sensitivity,xn_sensitivity] = \
@@ -101,9 +106,13 @@ class vmecOptimization:
     self.boundary = np.hstack((rmnc,zmns))   
     self.boundary_opt = np.hstack((rmnc_opt,zmns_opt))
     
-    [error_code,self.vmecOutputObject] = self.evaluate_vmec() # Current boundary evaluation
-    if (error_code != 0):
-      print('Unable to evaluate base VMEC equilibrium in vmecOptimization constructor.')
+    if (woutFilename is None):
+      [error_code,self.vmecOutputObject] = self.evaluate_vmec() # Current boundary evaluation
+      if (error_code != 0):
+        print('Unable to evaluate base VMEC equilibrium in vmecOptimization constructor.')
+    else:
+      self.vmecOutputObject = readVmecOutput(woutFilename)
+        
     
   def evaluate_vmec(self,boundary=None,It=None,pres=None,update=True):
     """
@@ -139,6 +148,8 @@ class vmecOptimization:
       directory_name = self.name+"_"+str(self.counter)
     elif (It is not None):
       directory_name = "delta_curr_"+str(self.counter)
+    elif (pres is not None):
+      directory_name = "delta_pres_"+str(self.counter)
     elif (self.counter == 0):
       directory_name = self.name+"_"+str(self.counter)
     else:
@@ -303,6 +314,10 @@ class vmecOptimization:
     ----------
     boundary (float array) : new boundary to evaluate. If None, objective will be computed from self.vmecOutputObject
         
+    Returns
+    ----------
+    objective function (float) : value of objective function defined through which_objective and weight_function.
+      If VMEC completes with an error, the value of the objective function is set to 1e12.
     """
     if (which_objective=='iota'):
       print("Evaluating iota objective.")
@@ -329,7 +344,7 @@ class vmecOptimization:
       self.update_boundary_opt(boundary_old)
     
     if (which_objective == 'iota'):
-      if (error_code != 0):
+      if (error_code == 0):
         return vmecOutputObject.evaluate_iota_objective(weight_function)
       else:
         return 1e12
@@ -338,6 +353,18 @@ class vmecOptimization:
 
   # If boundary is specified, new equilibrium will be specified
   def vmec_shape_gradient(self,boundary=None,which_objective='iota',weight_function=axis_weight,update=True):
+    """
+    Evaluates shape gradient for objective function 
+    
+    Parameters
+    ----------
+    boundary (float array) : new boundary to evaluate. If None, objective will be computed from self.vmecOutputObject
+        
+    Returns
+    ----------
+    objective function (float) : value of objective function defined through which_objective and weight_function.
+      If VMEC completes with an error, the value of the objective function is set to 1e12.
+    """
     if (which_objective=='iota'):
       print("Evaluating iota objective shape gradient.")
       delta = self.delta_curr

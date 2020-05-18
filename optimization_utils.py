@@ -100,7 +100,10 @@ class vmecOptimization:
     self.boundary = np.hstack((rmnc,zmns))   
     self.boundary_opt = np.hstack((rmnc_opt,zmns_opt))
     
-    self.vmecOutputObject = self.evaluate_vmec() # Current boundary evaluation
+    [error_code,self.vmecOutputObject] = self.evaluate_vmec() # Current boundary evaluation
+    if (error_code != 0):
+      print('Unable to evaluate base VMEC equilibrium in vmecOptimization constructor.')
+
     
   def evaluate_vmec(self,boundary=None,It=None,update=True):
     """
@@ -206,6 +209,7 @@ class vmecOptimization:
 
     # Call VMEC with revised input file
     exit_code = self.call_vmec(input_file)
+      
     # Read from new equilibrium
     outputFileName = "wout_"+input_file[6::]+".nc"
 
@@ -214,7 +218,7 @@ class vmecOptimization:
       self.vmecOutputObject = vmecOutput_new
 
     os.chdir("..")
-    return vmecOutput_new
+    return exit_code, vmecOutput_new
     
   def read_boundary_input(self,xn,xm):
     """
@@ -262,6 +266,14 @@ class vmecOptimization:
     
   # Update boundary_opt and boundary with new boundary coefficients
   def update_boundary_opt(self,boundary_opt_new):
+    """
+    Updates boundary harmonics at new evaluation point 
+    
+    Parameters
+    ----------
+    boundary_opt_new (float array) : new boundary to evaluate (same size as self.boundary_opt)
+        
+    """
     rmnc_opt_new = boundary_opt_new[0:self.mnmax_sensitivity]
     zmns_opt_new = boundary_opt_new[self.mnmax_sensitivity::]
     self.boundary_opt = boundary_opt_new
@@ -292,7 +304,10 @@ class vmecOptimization:
       boundary_old = np.copy(self.boundary_opt)
     # Evaluate new equilibrium if necessary
     if (boundary is not None and (boundary!=self.boundary_opt).any()):
-      vmecOutputObject = self.evaluate_vmec(boundary=boundary,update=update)
+      [error_code,vmecOutputObject] = self.evaluate_vmec(boundary=boundary,update=update)
+      if (error_code != 0):
+        print('VMEC returned with an error when evaluating new boundary in evaluate_vmec_objective. \
+              Objective function will be set to 1e12')
     else:
       vmecOutputObject = self.vmecOutputObject
     # Reset old boundary 
@@ -300,7 +315,10 @@ class vmecOptimization:
       self.update_boundary_opt(boundary_old)
     
     if (which_objective == 'iota'):
-      return vmecOutputObject.evaluate_iota_objective(weight_function)
+      if (error_code != 0):
+        return vmecOutputObject.evaluate_iota_objective(weight_function)
+      else:
+        return 1e12
     if (which_objective == 'well'):
       return vmecOutputObject.evaluate_well_objective(weight_function)
 
@@ -311,9 +329,13 @@ class vmecOptimization:
     else:
       print("Error! vmec_shape_gradient called with incorrect value of"+which_objective)
       sys.exit(1)
-      # Evaluate base equilibrium if necessary
+      
+    # Evaluate base equilibrium if necessary
     if (boundary is not None and (boundary!=self.boundary_opt).all()):
-      vmecOutputObject = self.evaluate_vmec(boundary=boundary,update=update)
+      [error_code, vmecOutputObject] = self.evaluate_vmec(boundary=boundary,update=update)
+      if (error_code != 0):
+        print('Unable to evaluate base VMEC equilibrium in vmec_shape_gradient.')
+        sys.exit(1)
     else:
       vmecOutputObject = self.vmecOutputObject
     [Bx, By, Bz, theta_arclength] = vmecOutputObject.B_on_arclength_grid()
@@ -322,7 +344,10 @@ class vmecOptimization:
       It_half = vmecOutputObject.compute_current()
       It_new = It_half + self.delta*weight_function(self.vmecOutputObject.s_half)
 
-      vmecOutput_delta = self.evaluate_vmec(It=It_new)
+      [error_code, vmecOutput_delta] = self.evaluate_vmec(It=It_new)
+      if (error_code != 0):
+        print('Unable to evaluate VMEC equilibrium with current perturbation in vmec_shaep_gradient.')
+        sys.exit(1)
 
       [Bx_delta, By_delta, Bz_delta, theta_arclength_delta] = vmecOutput_delta.B_on_arclength_grid()
       for izeta in range(self.vmecOutputObject.nzeta):
@@ -350,7 +375,10 @@ class vmecOptimization:
 
     # Evaluate base equilibrium if necessary
     if (boundary is not None):
-      vmecOutputObject = self.evaluate_vmec(boundary=boundary,update=update)
+      [error_code, vmecOutputObject] = self.evaluate_vmec(boundary=boundary,update=update)
+      if (error_code != 0):
+        print('Unable to evaluate base VMEC equilibrium in vmec_shape_gradient.')
+        sys.exit(1)
     else:
       vmecOutputObject = self.vmecOutputObject
 
@@ -372,7 +400,7 @@ class vmecOptimization:
     error_code = f.variables["ier_flag"][()]
     if (error_code != 0):
       print('VMEC completed with error code '+str(error_code))
-      sys.exit(1)    
+    return error_code
   
 # Note that xn is not multiplied by nfp
 def init_modes(mmax,nmax):

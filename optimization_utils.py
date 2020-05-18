@@ -104,7 +104,7 @@ class vmecOptimization:
         rmnc_opt[cond] = rbc_input[imn]
         zmns_opt[cond] = zbs_input[imn]
     self.boundary = np.hstack((rmnc,zmns))   
-    self.boundary_opt = np.hstack((rmnc_opt,zmns_opt))
+    self.boundary_opt = np.hstack((rmnc_opt,zmns_opt[1::]))
     
     if (woutFilename is None):
       [error_code,self.vmecOutputObject] = self.evaluate_vmec() # Current boundary evaluation
@@ -292,6 +292,11 @@ class vmecOptimization:
     """
     rmnc_opt_new = boundary_opt_new[0:self.mnmax_sensitivity]
     zmns_opt_new = boundary_opt_new[self.mnmax_sensitivity::]
+#     zmns_opt_new = [0,zmns_opt_new]
+    print(np.shape(zmns_opt_new))
+    zmns_opt_new = np.append([0],zmns_opt_new)
+    print(np.shape(zmns_opt_new))
+    print(np.shape(rmnc_opt_new))
     self.boundary_opt = boundary_opt_new
 
     rmnc_new = self.boundary[0:self.mnmax]
@@ -301,6 +306,8 @@ class vmecOptimization:
         (self.xn == self.xn_sensitivity[imn]))
       if (any(cond)):
         rmnc_new[cond] = rmnc_opt_new[imn]
+        # m = 0, n = 0 mode excluded 
+#         if (imn>0):
         zmns_new[cond] = zmns_opt_new[imn]
     self.boundary = np.hstack((rmnc_new,zmns_new))
     return
@@ -430,7 +437,7 @@ class vmecOptimization:
     [dfdrmnc,dfdzmns,xm_sensitivity,xn_sensitivity] = \
       parameter_derivatives(shape_gradient,vmecOutputObject,self.mmax_sensitivity,\
                                 self.nmax_sensitivity)
-    gradient = np.hstack((dfdrmnc,dfdzmns))
+    gradient = np.hstack((dfdrmnc,dfdzmns[1::]))
 
     return gradient
   

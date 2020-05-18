@@ -127,7 +127,7 @@ class vmecOptimization:
     if (os.getcwd()!=self.directory):
       print("Evaluate_vmec called from incorrect directory. Changing to "+self.directory)
       os.chdir(self.directory)
-    if (np.count([It,pres,boundary]>1)):
+    if (np.count_nonzero([It,pres,boundary] is not None)>1):
       print("evaluate_vmec called with more than one type of perturbation \
       (boundary, It, pres). This behavior is not supported.")
       sys.exit(1)
@@ -213,13 +213,15 @@ class vmecOptimization:
     # Call VMEC with revised input file
     exit_code = self.call_vmec(input_file)
       
-    if (exit_code !=0):
+    if (exit_code == 0):
       # Read from new equilibrium
       outputFileName = "wout_"+input_file[6::]+".nc"
 
       vmecOutput_new = readVmecOutput(outputFileName)
       if (boundary is not None and update):
         self.vmecOutputObject = vmecOutput_new
+    else:
+      vmecOutput_new = None
 
     os.chdir("..")
     return exit_code, vmecOutput_new

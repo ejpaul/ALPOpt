@@ -8,6 +8,7 @@ import shutil
 from FortranNamelistTools import *
 from scipy import interpolate
 import f90nml
+from scipy import linalg
 
 """
 Required packages: nlopt, f90nml, scanf
@@ -184,6 +185,10 @@ class vmecOptimization:
               not namelistLineContains(line,"ac_aux_f") and \
               not namelistLineContains(line,"curtor") and \
               not namelistLineContains(line,"pcurr_type"))
+        if (pres is not None):
+          write_condition = write_condition and (not namelistLineContains(line,"am_aux_s") and \
+              not namelistLineContains(line,"am_aux_f") and \
+              not namelistLineContains(line,"pmass_type"))
         if (write_condition):
           f2.write(line)
     if (boundary is not None):
@@ -217,6 +222,15 @@ class vmecOptimization:
       f2.writelines(map(lambda x:str(x)+" ",s_half))
       f2.write("\n")
       f2.write("pcurr_type = 'line_segment_I'" + "\n")
+    if (pres is not None):
+      f2.write("am_aux_f = ")
+      f2.writelines(map(lambda x:str(x)+" ",pres))
+      f2.write("\n")
+      f2.write("am_aux_s = ")
+      f2.writelines(map(lambda x:str(x)+" ",s_half))
+      f2.write("\n")
+      f2.write("pmass_type = 'line_segment'" + "\n")
+      
     f2.write("/ \n")
     f.close()
     f2.close()
@@ -292,12 +306,9 @@ class vmecOptimization:
     """
     rmnc_opt_new = boundary_opt_new[0:self.mnmax_sensitivity]
     zmns_opt_new = boundary_opt_new[self.mnmax_sensitivity::]
-#     zmns_opt_new = [0,zmns_opt_new]
-    print(np.shape(zmns_opt_new))
+    # m = 0, n = 0 mode excluded in boundary_opt
     zmns_opt_new = np.append([0],zmns_opt_new)
-    print(np.shape(zmns_opt_new))
-    print(np.shape(rmnc_opt_new))
-    self.boundary_opt = boundary_opt_new
+    self.boundary_opt = np.copy(boundary_opt_new)
 
     rmnc_new = self.boundary[0:self.mnmax]
     zmns_new = self.boundary[self.mnmax::]
@@ -306,8 +317,6 @@ class vmecOptimization:
         (self.xn == self.xn_sensitivity[imn]))
       if (any(cond)):
         rmnc_new[cond] = rmnc_opt_new[imn]
-        # m = 0, n = 0 mode excluded 
-#         if (imn>0):
         zmns_new[cond] = zmns_opt_new[imn]
     self.boundary = np.hstack((rmnc_new,zmns_new))
     return
@@ -423,7 +432,7 @@ class vmecOptimization:
       sys.exit(1)
 
     # Evaluate base equilibrium if necessary
-    if (boundary is not None):
+    if (boundary is not None and (boundary!=self.boundary_opt).any()):
       [error_code, vmecOutputObject] = self.evaluate_vmec(boundary=boundary,update=update)
       if (error_code != 0):
         print('Unable to evaluate base VMEC equilibrium in vmec_shape_gradient.')
@@ -517,3 +526,4 @@ def finite_difference_derivative(x,function,args=None,epsilon=1e-2,method='forwa
       dfdx[i] = (function_r-function_l)/(epsilon)
       
   return dfdx
+    

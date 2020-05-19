@@ -184,13 +184,11 @@ class vmecOptimization:
           write_condition = write_condition and (not namelistLineContains(line,"ac_aux_s") and \
               not namelistLineContains(line,"ac_aux_f") and \
               not namelistLineContains(line,"curtor") and \
-              not namelistLineContains(line,"pcurr_type") and \
-              not namelistLineContains(line,"AI"))
+              not namelistLineContains(line,"pcurr_type"))
         if (pres is not None):
           write_condition = write_condition and (not namelistLineContains(line,"am_aux_s") and \
               not namelistLineContains(line,"am_aux_f") and \
-              not namelistLineContains(line,"pmass_type") and \
-              not namelistLineContains(line,"AM"))
+              not namelistLineContains(line,"pmass_type"))
         if (write_condition):
           f2.write(line)
     if (boundary is not None):

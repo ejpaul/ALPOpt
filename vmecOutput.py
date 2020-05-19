@@ -40,6 +40,7 @@ class readVmecOutput:
     self.ntor = f.variables["ntor"][()]
     self.iota = f.variables["iotas"][()]
     self.vp = f.variables["vp"][()]
+    self.pres = f.variables["pres"][()]
     
     # Remove axis point from half grid quantities
     self.bsubumnc = np.delete(self.bsubumnc,0,0)
@@ -49,6 +50,7 @@ class readVmecOutput:
     self.gmnc = np.delete(self.gmnc,0,0)
     self.iota = np.delete(self.iota,0)
     self.vp = np.delete(self.vp,0)
+    self.pres = np.delete(self.pres,0)
     
     self.s_full = self.psi/self.psi[-1]
     self.ds = self.s_full[1]-self.s_full[0]
@@ -181,5 +183,5 @@ class readVmecOutput:
     return np.sum(weight(self.s_half)*self.iota)*self.ds*self.psi[-1]*self.sign_jac
   
   # Integrated differential volume with weight function
-  def evaluate_weight_objective(self,weight):
+  def evaluate_well_objective(self,weight):
     return np.sum(weight(self.s_half)*self.vp)*self.ds*self.psi[-1]*self.sign_jac

@@ -210,10 +210,7 @@ class vmecOptimization:
           f2.write("\n")
     if (It is not None):
       curtor = 1.5*It[-1] - 0.5*It[-2]
-      s_full = np.linspace(0,1,len(It)+1)
-      ds = s_full[1]-s_full[0]
-      s_half = s_full-0.5*ds
-      s_half = np.delete(s_half,0)
+      s_half = self.vmecOutputObject.s_half
       f2.write("curtor = " + str(curtor) + "\n")
       f2.write("ac_aux_f = ")
       f2.writelines(map(lambda x:str(x)+" ",It))
@@ -223,6 +220,7 @@ class vmecOptimization:
       f2.write("\n")
       f2.write("pcurr_type = 'line_segment_I'" + "\n")
     if (pres is not None):
+      s_half = self.vmecOutputObject.s_half
       f2.write("am_aux_f = ")
       f2.writelines(map(lambda x:str(x)+" ",pres))
       f2.write("\n")
@@ -337,6 +335,8 @@ class vmecOptimization:
     """
     if (which_objective=='iota'):
       print("Evaluating iota objective.")
+    elif (which_objective=='well'):
+      print("Evaluating well objective.")
     else:
       print("Error! evaluate_vmec called with incorrect value of which_objective")
       sys.exit(1)
@@ -360,14 +360,15 @@ class vmecOptimization:
       self.update_boundary_opt(boundary_old)
     
     if (which_objective == 'iota'):
-      if (error_code == 0):
-        return vmecOutputObject.evaluate_iota_objective(weight_function)
-      else:
-        return 1e12
-    if (which_objective == 'well'):
-      return vmecOutputObject.evaluate_well_objective(weight_function)
+      objective_function = vmecOutputObject.evaluate_iota_objective(weight_function)
+    elif (which_objective == 'well'):
+      objective_function = vmecOutputObject.evaluate_well_objective(weight_function)
+    
+    if (error_code == 0):
+      return objective_function
+    else:
+      return 1e12
 
-  # If boundary is specified, new equilibrium will be specified
   def vmec_shape_gradient(self,boundary=None,which_objective='iota',weight_function=axis_weight,update=True):
     """
     Evaluates shape gradient for objective function 
@@ -384,6 +385,9 @@ class vmecOptimization:
     if (which_objective=='iota'):
       print("Evaluating iota objective shape gradient.")
       delta = self.delta_curr
+    elif (which_objective=='well'):
+      print("Evaluating well objective shape gradient.")
+      delta = self.delta_pres
     else:
       print("Error! vmec_shape_gradient called with incorrect value of"+which_objective)
       sys.exit(1)
@@ -409,16 +413,36 @@ class vmecOptimization:
 
       [Bx_delta, By_delta, Bz_delta, theta_arclength_delta] = vmecOutput_delta.B_on_arclength_grid()
       for izeta in range(self.vmecOutputObject.nzeta):
-          f = interpolate.InterpolatedUnivariateSpline(theta_arclength_delta[izeta,:],Bx_delta[izeta,:])
-          Bx_delta[izeta,:] = f(theta_arclength[izeta,:])
-          f = interpolate.InterpolatedUnivariateSpline(theta_arclength_delta[izeta,:],By_delta[izeta,:])
-          By_delta[izeta,:] = f(theta_arclength[izeta,:])
-          f = interpolate.InterpolatedUnivariateSpline(theta_arclength_delta[izeta,:],Bz_delta[izeta,:])
-          Bz_delta[izeta,:] = f(theta_arclength[izeta,:])
+        f = interpolate.InterpolatedUnivariateSpline(theta_arclength_delta[izeta,:],Bx_delta[izeta,:])
+        Bx_delta[izeta,:] = f(theta_arclength[izeta,:])
+        f = interpolate.InterpolatedUnivariateSpline(theta_arclength_delta[izeta,:],By_delta[izeta,:])
+        By_delta[izeta,:] = f(theta_arclength[izeta,:])
+        f = interpolate.InterpolatedUnivariateSpline(theta_arclength_delta[izeta,:],Bz_delta[izeta,:])
+        Bz_delta[izeta,:] = f(theta_arclength[izeta,:])
 
       deltaB_dot_B = ((Bx_delta-Bx)*Bx + (By_delta-By)*By + (Bz_delta-Bz)*Bz)/delta
 
       shape_gradient = deltaB_dot_B/(2*np.pi*self.vmecOutputObject.mu0)
+    elif (which_objective == 'well'):
+      pres = vmecOutputObject.pres
+      pres_new = pres + delta*weight_function(self.vmecOutputObject.s_half)
+      
+      [error_code, vmecOutput_delta] = self.evaluate_vmec(pres=pres_new)
+      if (error_code != 0):
+        print('Unable to evaluate VMEC equilibrium with pressure perturbation in vmec_shaep_gradient.')
+        sys.exit(1)  
+        
+      [Bx_delta, By_delta, Bz_delta, theta_arclength_delta] = vmecOutput_delta.B_on_arclength_grid()
+      for izeta in range(self.vmecOutputObject.nzeta):
+        f = interpolate.InterpolatedUnivariateSpline(theta_arclength_delta[izeta,:],Bx_delta[izeta,:])
+        Bx_delta[izeta,:] = f(theta_arclength[izeta,:])
+        f = interpolate.InterpolatedUnivariateSpline(theta_arclength_delta[izeta,:],By_delta[izeta,:])
+        By_delta[izeta,:] = f(theta_arclength[izeta,:])
+        f = interpolate.InterpolatedUnivariateSpline(theta_arclength_delta[izeta,:],Bz_delta[izeta,:])
+        Bz_delta[izeta,:] = f(theta_arclength[izeta,:])
+
+      deltaB_dot_B = ((Bx_delta-Bx)*Bx + (By_delta-By)*By + (Bz_delta-Bz)*Bz)/delta
+      shape_gradient = deltaB_dot_B/(self.vmecOutputObject.mu0) + weight_function(1)
 
     return shape_gradient
   
@@ -427,8 +451,10 @@ class vmecOptimization:
   def evaluate_vmec_objective_grad(self,boundary=None,which_objective='iota',weight_function=axis_weight,update=True):
     if (which_objective=='iota'):
       print("Evaluating iota objective gradient.")
+    elif (which_objective=='well'):
+      print("Evaluating well objective gradient.")
     else:
-      print("Error! evaluate_vmec_objective_grad called with incorrect value of"+which_objective)
+      print("Error! evaluate_vmec_objective_grad called with incorrect value of"+str(which_objective))
       sys.exit(1)
 
     # Evaluate base equilibrium if necessary

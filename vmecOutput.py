@@ -184,4 +184,4 @@ class readVmecOutput:
   
   # Integrated differential volume with weight function
   def evaluate_well_objective(self,weight):
-    return 4*np.pi*np.pinp.sum(weight(self.s_half)*self.vp)*self.ds*self.psi[-1]
+    return 4*np.pi*np.pi*np.sum(weight(self.s_half)*self.vp)*self.ds*self.psi[-1]

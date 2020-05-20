@@ -486,6 +486,43 @@ class vmecOptimization:
       print('VMEC completed with error code '+str(error_code))
     return error_code
   
+  def optimization_plot(self,which_objective,weight):
+    os.chdir(self.directory)
+    # Get all subdirectories
+    dir_list = next(os.walk('.'))[1]
+    # Filter those beginning with self.name
+    for dir in dir_list:
+      if (len(dir)<len(self.name)+1):
+        dir_list.remove(dir)
+      elif (dir[0:len(self.name)+1]!=self.name+'_'):
+        dir_list.remove(dir)
+      elif (not dir[len(self.name)+1].isdigit()):
+        dir_list.remove(dir)
+    print(dir_list)
+    objective = np.zeros(len(dir_list))
+    for i in range(len(dir_list)):
+      os.chdir(dir_list[i])
+      wout_filename = 'wout_'+dir_list[i]+'.nc'
+      if (os.path.exists(wout_filename)):
+        f = netcdf.netcdf_file(wout_filename,'r',mmap=False)
+        error_code = f.variables["ier_flag"][()]
+        if (error_code != 0):
+          print('VMEC completed with error code '+str(error_code)+' in '+dir+". Moving on to next directory. \
+            Objective function will be  set to zero.")
+        else:
+          readVmecObject = readVmecOutput('wout_'+dir_list[i]+'.nc')
+          if (which_objective=='iota'):
+            objective[i] = readVmecObject.evaluate_iota_objective(weight)
+          elif (which_objective=='well'):
+            objective[i] = readVmecObject.evaluate_well_objective(weight)
+          else:
+            print("Incorrect objective specified in optimization_plot!")
+            sys.exit(1)
+      else:
+        print("wout_filename not found in "+ dir+". Moving on to next directory Objective function will be set to zero.")
+      os.chdir('..')
+    return objective
+  
 # Note that xn is not multiplied by nfp
 def init_modes(mmax,nmax):
   mnmax = (nmax+1) + (2*nmax+1)*mmax
@@ -552,4 +589,5 @@ def finite_difference_derivative(x,function,args=None,epsilon=1e-2,method='forwa
       dfdx[i] = (function_r-function_l)/(epsilon)
       
   return dfdx
+
     

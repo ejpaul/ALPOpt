@@ -41,6 +41,7 @@ class readVmecOutput:
     self.iota = f.variables["iotas"][()]
     self.vp = f.variables["vp"][()]
     self.pres = f.variables["pres"][()]
+    self.volume = f.variables["volume_p"][()]
     
     # Remove axis point from half grid quantities
     self.bsubumnc = np.delete(self.bsubumnc,0,0)
@@ -56,6 +57,8 @@ class readVmecOutput:
     self.ds = self.s_full[1]-self.s_full[0]
     self.s_half = self.s_full - 0.5*self.ds
     self.s_half = np.delete(self.s_half,0)
+    self.ns = len(self.s_full)
+    self.ns_half = len(self.s_half)
     
     self.nfp = f.variables["nfp"][()]
     self.sign_jac = f.variables["signgs"][()]
@@ -185,3 +188,89 @@ class readVmecOutput:
   # Integrated differential volume with weight function
   def evaluate_well_objective(self,weight):
     return 4*np.pi*np.pi*np.sum(weight(self.s_half)*self.vp)*self.ds*self.psi[-1]
+  
+  def area(self,isurf):
+    this_rmnc = self.rmnc[isurf,:]
+    this_zmns = self.zmns[isurf,:] 
+    dRdtheta = np.zeros(np.shape(self.thetas_2d))
+    dZdtheta = np.zeros(np.shape(self.thetas_2d))
+    dRdzeta = np.zeros(np.shape(self.thetas_2d))
+    dZdzeta = np.zeros(np.shape(self.thetas_2d))
+    R = np.zeros(np.shape(self.thetas_2d))
+    for im in range(self.mnmax):
+      angle = self.xm[im]*self.thetas_2d - self.xn[im]*self.zetas_2d
+      cos_angle = np.cos(angle)
+      sin_angle = np.sin(angle)
+      dRdtheta = dRdtheta - self.xm[im]*this_rmnc[im]*sin_angle
+      dZdtheta = dZdtheta + self.xm[im]*this_zmns[im]*cos_angle
+      dRdzeta = dRdzeta + self.xn[im]*this_rmnc[im]*sin_angle
+      dZdzeta = dZdzeta - self.xn[im]*this_zmns[im]*cos_angle
+      R = R + this_rmnc[im]*cos_angle
+    dxdtheta = dRdtheta*np.cos(self.zetas_2d)
+    dydtheta = dRdtheta*np.sin(self.zetas_2d)
+    dxdzeta = dRdzeta*np.cos(self.zetas_2d) - R*np.sin(self.zetas_2d)
+    dydzeta = dRdzeta*np.sin(self.zetas_2d) + R*np.cos(self.zetas_2d)
+    norm_x = dydtheta*dZdzeta - dydzeta*dZdtheta
+    norm_y = dZdtheta*dxdzeta - dZdzeta*dxdtheta
+    norm_z = dxdtheta*dydzeta - dxdzeta*dydtheta
+    norm_normal = np.sqrt(norm_x**2 + norm_y**2 + norm_z**2)
+    area = np.sum(norm_normal)*self.dtheta*self.dzeta
+    return area
+    
+  def mean_curvature(self,isurf):
+    this_rmnc = self.rmnc[isurf,:]
+    this_zmns = self.zmns[isurf,:] 
+    
+    dRdtheta = np.zeros(np.shape(self.thetas_2d))
+    dZdtheta = np.zeros(np.shape(self.thetas_2d))
+    dRdzeta = np.zeros(np.shape(self.thetas_2d))
+    dZdzeta = np.zeros(np.shape(self.thetas_2d))
+    d2Rdtheta2 = np.zeros(np.shape(self.thetas_2d))
+    d2Rdzeta2 = np.zeros(np.shape(self.thetas_2d))
+    d2Zdtheta2 = np.zeros(np.shape(self.thetas_2d))
+    d2Zdzeta2 = np.zeros(np.shape(self.thetas_2d))
+    d2Rdthetadzeta = np.zeros(np.shape(self.thetas_2d))
+    d2Zdthetadzeta = np.zeros(np.shape(self.thetas_2d))
+    R = np.zeros(np.shape(self.thetas_2d))
+    for im in range(self.mnmax):
+      angle = self.xm[im]*self.thetas_2d - self.xn[im]*self.zetas_2d
+      cos_angle = np.cos(angle)
+      sin_angle = np.sin(angle)
+      dRdtheta = dRdtheta - self.xm[im]*this_rmnc[im]*sin_angle
+      dZdtheta = dZdtheta + self.xm[im]*this_zmns[im]*cos_angle
+      dRdzeta = dRdzeta + self.xn[im]*this_rmnc[im]*sin_angle
+      dZdzeta = dZdzeta - self.xn[im]*this_zmns[im]*cos_angle
+      d2Rdtheta2 = d2Rdtheta2 - self.xm[im]*self.xm[im]*this_rmnc[im]*cos_angle
+      d2Zdtheta2 = d2Zdtheta2 - self.xm[im]*self.xm[im]*this_zmns[im]*sin_angle
+      d2Rdzeta2 = d2Rdzeta2 - self.xn[im]*self.xn[im]*this_rmnc[im]*cos_angle
+      d2Zdzeta2 = d2Zdzeta2 - self.xn[im]*self.xn[im]*this_zmns[im]*sin_angle
+      d2Rdthetadzeta = d2Rdthetadzeta + self.xm[im]*self.xn[im]*this_rmnc[im]*cos_angle
+      d2Zdthetadzeta = d2Zdthetadzeta + self.xm[im]*self.xn[im]*this_zmns[im]*sin_angle
+      R = R + this_rmnc[im]*cos_angle
+    dxdtheta = dRdtheta*np.cos(self.zetas_2d)
+    dydtheta = dRdtheta*np.sin(self.zetas_2d)
+    dxdzeta = dRdzeta*np.cos(self.zetas_2d) - R*np.sin(self.zetas_2d)
+    dydzeta = dRdzeta*np.sin(self.zetas_2d) + R*np.cos(self.zetas_2d)
+    d2xdtheta2 = d2Rdtheta2*np.cos(self.zetas_2d)
+    d2ydtheta2 = d2Rdtheta2*np.sin(self.zetas_2d)
+    d2xdzeta2 = d2Rdzeta2*np.cos(self.zetas_2d) - 2*dRdzeta*np.sin(self.zetas_2d) - R*np.cos(self.zetas_2d)
+    d2ydzeta2 = d2Rdzeta2*np.sin(self.zetas_2d) + 2*dRdzeta*np.cos(self.zetas_2d) - R*np.sin(self.zetas_2d)
+    d2xdthetadzeta = d2Rdthetadzeta*np.cos(self.zetas_2d) - dRdtheta*np.sin(self.zetas_2d)
+    d2ydthetadzeta = d2Rdthetadzeta*np.sin(self.zetas_2d) + dRdtheta*np.cos(self.zetas_2d)
+    
+    norm_x = dydtheta*dZdzeta - dydzeta*dZdtheta
+    norm_y = dZdtheta*dxdzeta - dZdzeta*dxdtheta
+    norm_z = dxdtheta*dydzeta - dxdzeta*dydtheta
+    norm_normal = np.sqrt(norm_x**2 + norm_y**2 + norm_z**2)
+    nx = norm_x/norm_normal
+    ny = norm_y/norm_normal
+    nz = norm_z/norm_normal
+    E = dxdtheta*dxdtheta + dydtheta*dydtheta + dZdtheta*dZdtheta
+    F = dxdtheta*dxdzeta + dydtheta*dydzeta + dZdtheta*dZdzeta
+    G = dxdzeta*dxdzeta + dydzeta*dydzeta + dZdzeta*dZdzeta
+    e = nx*d2xdtheta2 + ny*d2ydtheta2 + nz*d2Zdtheta2
+    f = nx*d2xdthetadzeta + ny*d2ydthetadzeta + nz*d2Zdthetadzeta
+    g = nx*d2xdzeta2 + ny*d2ydzeta2 + nz*d2Zdzeta2
+    H = (e*G-2*f*F+g*E)/(E*G-F*F)
+    return H
+    

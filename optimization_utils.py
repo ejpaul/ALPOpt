@@ -337,6 +337,10 @@ class vmecOptimization:
       print("Evaluating iota objective.")
     elif (which_objective=='well'):
       print("Evaluating well objective.")
+    elif (which_objective=='volume'):
+      print("Evaluating volume objective.")
+    elif (which_objective=='area'):
+      print("Evaluating area objective.")
     else:
       print("Error! evaluate_vmec called with incorrect value of which_objective")
       sys.exit(1)
@@ -363,7 +367,11 @@ class vmecOptimization:
       objective_function = vmecOutputObject.evaluate_iota_objective(weight_function)
     elif (which_objective == 'well'):
       objective_function = vmecOutputObject.evaluate_well_objective(weight_function)
-    
+    elif (which_objective == 'volume'):
+      objective_function = vmecOutputObject.volume
+    elif (which_objective == 'area'):
+      objective_function = vmecOutputObject.area(vmecOutputObject.ns-1)
+      
     if (error_code == 0):
       return objective_function
     else:
@@ -388,6 +396,11 @@ class vmecOptimization:
     elif (which_objective=='well'):
       print("Evaluating well objective shape gradient.")
       delta = self.delta_pres
+    elif (which_objective=='volume'):
+      print("Evaluating volume shape gradient.")
+      return 1
+    elif (which_objective=='area'):
+      print("Evaluating area shape gradient.")
     else:
       print("Error! vmec_shape_gradient called with incorrect value of"+which_objective)
       sys.exit(1)
@@ -443,7 +456,9 @@ class vmecOptimization:
 
       deltaB_dot_B = ((Bx_delta-Bx)*Bx + (By_delta-By)*By + (Bz_delta-Bz)*Bz)/delta
       shape_gradient = deltaB_dot_B/(self.vmecOutputObject.mu0) + weight_function(1)
-
+    elif (which_objective == 'area'):
+      shape_gradient = vmecOutputObject.mean_curvature(vmecOutputObject.ns-1)
+      
     return shape_gradient
   
   # Call VMEC with boundary specified by boundaryObjective to evaluate which_objective and compute gradient
@@ -453,6 +468,10 @@ class vmecOptimization:
       print("Evaluating iota objective gradient.")
     elif (which_objective=='well'):
       print("Evaluating well objective gradient.")
+    elif (which_objective=='volume'):
+      print("Evaluating volume objective gradient.")
+    elif (which_objective=='area'):
+      print("Evaluating area objective gradient.")
     else:
       print("Error! evaluate_vmec_objective_grad called with incorrect value of"+str(which_objective))
       sys.exit(1)
@@ -498,7 +517,6 @@ class vmecOptimization:
         dir_list.remove(dir)
       elif (not dir[len(self.name)+1].isdigit()):
         dir_list.remove(dir)
-    print(dir_list)
     objective = np.zeros(len(dir_list))
     for i in range(len(dir_list)):
       os.chdir(dir_list[i])
@@ -508,13 +526,17 @@ class vmecOptimization:
         error_code = f.variables["ier_flag"][()]
         if (error_code != 0):
           print('VMEC completed with error code '+str(error_code)+' in '+dir+". Moving on to next directory. \
-            Objective function will be  set to zero.")
+            Objective function will be set to zero.")
         else:
           readVmecObject = readVmecOutput('wout_'+dir_list[i]+'.nc')
           if (which_objective=='iota'):
             objective[i] = readVmecObject.evaluate_iota_objective(weight)
           elif (which_objective=='well'):
             objective[i] = readVmecObject.evaluate_well_objective(weight)
+          elif (which_objective=='volume'):
+            objective[i] = readVmecObject.volume
+          elif (which_objective=='area'):
+            objective[i] = readVmecObject.area
           else:
             print("Incorrect objective specified in optimization_plot!")
             sys.exit(1)

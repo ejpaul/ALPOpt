@@ -76,6 +76,7 @@ class vmecOptimization:
     if (mpol_input<2):
       print('Error! mpol must be > 1.')
       sys.exit(1)
+    self.namelist = nml
       
     ntor_input = nml.get("ntor")
     # max(xm) = mpol-1 in VMEC
@@ -89,6 +90,10 @@ class vmecOptimization:
     [self.mnmax,self.xm,self.xn] = init_modes(self.mmax,self.nmax)
     [mnmax_sensitivity,xm_sensitivity,xn_sensitivity] = init_modes(mmax_sensitivity,nmax_sensitivity)
 
+    # Update namelist with required mpol and ntor
+    self.namelist["mpol"] = self.mmax+1
+    self.namelist["ntor"] = self.nmax
+    
     rmnc = np.zeros(self.mnmax)
     zmns = np.zeros(self.mnmax)
     rmnc_opt = np.zeros(mnmax_sensitivity)
@@ -106,14 +111,43 @@ class vmecOptimization:
         zmns_opt[cond] = zbs_input[imn]
     self.boundary = np.hstack((rmnc,zmns))   
     self.boundary_opt = np.hstack((rmnc_opt,zmns_opt[1::]))
-    
+        
     if (woutFilename is None):
       [error_code,self.vmecOutputObject] = self.evaluate_vmec() # Current boundary evaluation
       if (error_code != 0):
         print('Unable to evaluate base VMEC equilibrium in vmecOptimization constructor.')
     else:
       self.vmecOutputObject = readVmecOutput(woutFilename)
-        
+      
+  def print_namelist(self,input_filename,namelist=None):
+    if (namelist is None):
+      namelist = self.namelist
+    f = open(input_filename,'w')
+    f.write("&INDATA\n")
+    for item in namelist.keys():
+      if (not isinstance(namelist[item],(list, tuple, np.ndarray,str))):
+        f.write(item+"="+str(namelist[item])+"\n")
+      elif (isinstance(namelist[item],str)):
+        f.write(item+"="+"'"+str(namelist[item])+"'"+"\n")
+      elif (item not in ['rbc','zbs']):
+        f.write(item+"=")
+        f.writelines(map(lambda x:str(x)+" ",namelist[item]))
+        f.write("\n")
+    # Write RBC
+    for imn in range(self.mnmax):
+      if (self.boundary[imn]!=0):
+        f.write('RBC('+str(int(self.xn[imn]))+","\
+                 +str(int(self.xm[imn]))+") = "\
+                 +str(self.boundary[imn])+'\n')
+    # Write ZBS
+    for imn in range(self.mnmax):
+      if (self.boundary[self.mnmax+imn]!=0):
+        f.write('ZBS('+str(int(self.xn[imn]))+","\
+                 +str(int(self.xm[imn]))+") = "\
+                 +str(self.boundary[self.mnmax+imn])+'\n')
+
+    f.write("/\n")
+    f.close()
     
   def evaluate_vmec(self,boundary=None,It=None,pres=None,update=True):
     """
@@ -164,74 +198,40 @@ class vmecOptimization:
         print('Warning. Directory '+directory_name+' already exists. Contents may be overwritten.')
         raise
       pass
-
+    
+    namelist_new = self.namelist.copy()
     # Edit input filename with boundary 
-    f = open(self.vmecInputFilename,'r')
-    os.chdir(directory_name)
-    input_file = "input."+directory_name
-    f2 = open(input_file,'w')
-    input_file_lines = f.readlines()
-    for line in input_file_lines:
-        if (line.strip()=="/"):
-          break
-        write_condition = True
-        if (boundary is not None):
-          write_condition = write_condition and (not namelistLineContains(line,"rbc") and \
-              not namelistLineContains(line,"zbs") and \
-              not namelistLineContains(line,"mpol") and \
-              not namelistLineContains(line,"ntor"))
-        if (It is not None):
-          write_condition = write_condition and (not namelistLineContains(line,"ac_aux_s") and \
-              not namelistLineContains(line,"ac_aux_f") and \
-              not namelistLineContains(line,"curtor") and \
-              not namelistLineContains(line,"pcurr_type"))
-        if (pres is not None):
-          write_condition = write_condition and (not namelistLineContains(line,"am_aux_s") and \
-              not namelistLineContains(line,"am_aux_f") and \
-              not namelistLineContains(line,"pmass_type"))
-        if (write_condition):
-          f2.write(line)
-    if (boundary is not None):
-      f2.write("mpol = " + str(self.mmax+1) + "\n")
-      f2.write("ntor = " + str(self.nmax) + "\n")
-      # Write RBC
-      for imn in range(self.mnmax):
-        if (self.boundary[imn]!=0):
-          f2.write('RBC('+str(int(self.xn[imn]))+","\
-                   +str(int(self.xm[imn]))+") = "\
-                   +str(self.boundary[imn]))
-          f2.write("\n")
-      # Write ZBS
-      for imn in range(self.mnmax):
-        if (self.boundary[self.mnmax+imn]!=0):
-          f2.write('ZBS('+str(int(self.xn[imn]))+","\
-                   +str(int(self.xm[imn]))+") = "\
-                   +str(self.boundary[self.mnmax+imn]))
-          f2.write("\n")
     if (It is not None):
       curtor = 1.5*It[-1] - 0.5*It[-2]
       s_half = self.vmecOutputObject.s_half
-      f2.write("curtor = " + str(curtor) + "\n")
-      f2.write("ac_aux_f = ")
-      f2.writelines(map(lambda x:str(x)+" ",It))
-      f2.write("\n")
-      f2.write("ac_aux_s = ")
-      f2.writelines(map(lambda x:str(x)+" ",s_half))
-      f2.write("\n")
-      f2.write("pcurr_type = 'line_segment_I'" + "\n")
+      if (self.vmecOutputObject.ns>99):
+        s_spline = np.linspace(0,1,99)
+        ds_spline = s_spline[1]-s_spline[0]
+        s_spline_half = s_spline - 0.5*ds_spline
+        s_spline_half = np.delete(s_spline_half,0)
+        It_spline = interpolate.InterpolatedUnivariateSpline(s_half,It)
+        It = It_spline(s_spline_half)
+        s_half = s_spline_half
+      namelist_new["cutor"] = curtor
+      namelist_new["ac_aux_f"] = list(It)
+      namelist_new["ac_aux_s"] = list(s_half)
+      namelist_new["pcurr_type"] = "line_segment_I"
     if (pres is not None):
       s_half = self.vmecOutputObject.s_half
-      f2.write("am_aux_f = ")
-      f2.writelines(map(lambda x:str(x)+" ",pres))
-      f2.write("\n")
-      f2.write("am_aux_s = ")
-      f2.writelines(map(lambda x:str(x)+" ",s_half))
-      f2.write("\n")
-      f2.write("pmass_type = 'line_segment'" + "\n")
-      
-    f2.write("/ \n")
-    f.close()
-    f2.close()
+      if (self.vmecOutputObject.ns>99):
+        s_spline = np.linspace(0,1,99)
+        ds_spline = s_spline[1]-s_spline[0]
+        s_spline_half = s_spline - 0.5*ds_spline
+        s_spline_half = np.delete(s_spline_half,0)
+        pres_spline = interpolate.InterpolatedUnivariateSpline(s_half,pres)
+        pres = pres_spline(s_spline_half)
+        s_half = s_spline_half
+      namelist_new["am_aux_f"] = list(pres)
+      namelist_new["am_aux_s"] = list(s_half)
+      namelist_new["pmass_type"] = "line_segment"   
+    os.chdir(directory_name)
+    input_file = "input."+directory_name
+    self.print_namelist(input_file,namelist=namelist_new)
 
     # Call VMEC with revised input file
     exit_code = self.call_vmec(input_file)
@@ -264,10 +264,8 @@ class vmecOptimization:
     zbs (float array) : boundary harmonics for height coordinate (same size as xm and xn)
     
     """
-    nml = f90nml.read(self.vmecInputFilename)
-    nml = nml["indata"]
-    rbc_array = np.array(nml["rbc"]).T
-    zbs_array = np.array(nml["zbs"]).T
+    rbc_array = np.array(self.namelist["rbc"]).T
+    zbs_array = np.array(self.namelist["zbs"]).T
 
     rbc_array[rbc_array==None] = 0
     zbs_array[zbs_array==None] = 0

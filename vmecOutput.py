@@ -187,7 +187,7 @@ class readVmecOutput:
   
   # Integrated differential volume with weight function
   def evaluate_well_objective(self,weight):
-    return 4*np.pi*np.pi*np.sum(weight(self.s_half)*self.vp)*self.ds*self.psi[-1]
+    return 4*np.pi*np.pi*np.sum(weight(self.s_half)*self.vp)*self.ds
   
   def area(self,isurf):
     this_rmnc = self.rmnc[isurf,:]

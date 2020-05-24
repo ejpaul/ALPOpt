@@ -52,7 +52,7 @@ class vmecOptimization:
   """
   def __init__(self,vmecInputFilename,mmax_sensitivity,
              nmax_sensitivity,callVMEC_function,name,delta_curr=10,delta_pres=10,
-             woutFilename=None):
+             woutFilename=None,ntheta=100,nzeta=100):
     self.mmax_sensitivity = mmax_sensitivity
     self.nmax_sensitivity = nmax_sensitivity
     [mnmax_sensitivity,xm_sensitivity,xn_sensitivity] = \
@@ -67,6 +67,8 @@ class vmecOptimization:
     self.directory = os.getcwd()
     self.delta_pres = delta_pres
     self.delta_curr = delta_curr
+    self.ntheta = ntheta
+    self.nzeta = nzeta
     
     # Read items from Fortran namelist
     nml = f90nml.read(vmecInputFilename)
@@ -117,7 +119,7 @@ class vmecOptimization:
       if (error_code != 0):
         print('Unable to evaluate base VMEC equilibrium in vmecOptimization constructor.')
     else:
-      self.vmecOutputObject = readVmecOutput(woutFilename)
+      self.vmecOutputObject = readVmecOutput(woutFilename,self.ntheta,self.nzeta)
       
   def print_namelist(self,input_filename,namelist=None):
     if (namelist is None):
@@ -204,8 +206,8 @@ class vmecOptimization:
     if (It is not None):
       curtor = 1.5*It[-1] - 0.5*It[-2]
       s_half = self.vmecOutputObject.s_half
-      if (self.vmecOutputObject.ns>99):
-        s_spline = np.linspace(0,1,99)
+      if (self.vmecOutputObject.ns>101):
+        s_spline = np.linspace(0,1,102)
         ds_spline = s_spline[1]-s_spline[0]
         s_spline_half = s_spline - 0.5*ds_spline
         s_spline_half = np.delete(s_spline_half,0)
@@ -218,8 +220,8 @@ class vmecOptimization:
       namelist_new["pcurr_type"] = "line_segment_I"
     if (pres is not None):
       s_half = self.vmecOutputObject.s_half
-      if (self.vmecOutputObject.ns>99):
-        s_spline = np.linspace(0,1,99)
+      if (self.vmecOutputObject.ns>101):
+        s_spline = np.linspace(0,1,102)
         ds_spline = s_spline[1]-s_spline[0]
         s_spline_half = s_spline - 0.5*ds_spline
         s_spline_half = np.delete(s_spline_half,0)
@@ -240,7 +242,7 @@ class vmecOptimization:
       # Read from new equilibrium
       outputFileName = "wout_"+input_file[6::]+".nc"
 
-      vmecOutput_new = readVmecOutput(outputFileName)
+      vmecOutput_new = readVmecOutput(outputFileName,self.ntheta,self.nzeta)
       if (boundary is not None and update):
         self.vmecOutputObject = vmecOutput_new
     else:
@@ -526,7 +528,7 @@ class vmecOptimization:
           print('VMEC completed with error code '+str(error_code)+' in '+dir+". Moving on to next directory. \
             Objective function will be set to zero.")
         else:
-          readVmecObject = readVmecOutput('wout_'+dir_list[i]+'.nc')
+          readVmecObject = readVmecOutput('wout_'+dir_list[i]+'.nc',self.ntheta,self.nzeta)
           if (which_objective=='iota'):
             objective[i] = readVmecObject.evaluate_iota_objective(weight)
           elif (which_objective=='well'):
@@ -569,7 +571,7 @@ def init_modes(mmax,nmax):
 # Returns derivatives with respect to rmnc and zmns
 def parameter_derivatives(shape_gradient,readVmecOutputObject,mmax_sensitivity,nmax_sensitivity):
   
-  [Nx,Ny,Nz] = readVmecOutputObject.compute_N()    
+  [Nx,Ny,Nz] = readVmecOutputObject.compute_N(-1)    
 
   [mnmax_sensitivity, xm_sensitivity, xn_sensitivity] = init_modes(mmax_sensitivity,nmax_sensitivity)
 

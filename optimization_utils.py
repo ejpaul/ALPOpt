@@ -398,7 +398,7 @@ class vmecOptimization:
       delta = self.delta_pres
     elif (which_objective=='volume'):
       print("Evaluating volume shape gradient.")
-      return 1
+      return np.ones(np.shape(self.vmecOutputObject.zetas_2d))
     elif (which_objective=='area'):
       print("Evaluating area shape gradient.")
     else:

@@ -413,9 +413,9 @@ class vmecOptimization:
         sys.exit(1)
     else:
       vmecOutputObject = self.vmecOutputObject
-    [Bx, By, Bz, theta_arclength] = vmecOutputObject.B_on_arclength_grid()
 
     if (which_objective == 'iota'):
+      [Bx, By, Bz, theta_arclength] = vmecOutputObject.B_on_arclength_grid()
       It_half = vmecOutputObject.compute_current()
       It_new = It_half + delta*weight_function(self.vmecOutputObject.s_half)
 
@@ -437,6 +437,7 @@ class vmecOptimization:
 
       shape_gradient = deltaB_dot_B/(2*np.pi*self.vmecOutputObject.mu0)
     elif (which_objective == 'well'):
+      [Bx, By, Bz, theta_arclength] = vmecOutputObject.B_on_arclength_grid()
       pres = vmecOutputObject.pres
       pres_new = pres + delta*weight_function(self.vmecOutputObject.s_half)
       
@@ -457,7 +458,7 @@ class vmecOptimization:
       deltaB_dot_B = ((Bx_delta-Bx)*Bx + (By_delta-By)*By + (Bz_delta-Bz)*Bz)/delta
       shape_gradient = deltaB_dot_B/(self.vmecOutputObject.mu0) + weight_function(1)
     elif (which_objective == 'area'):
-      shape_gradient = vmecOutputObject.mean_curvature(vmecOutputObject.ns-1)
+      shape_gradient = vmecOutputObject.mean_curvature(vmecOutputObject.ns-1)      
       
     return shape_gradient
   
@@ -508,15 +509,19 @@ class vmecOptimization:
   def optimization_plot(self,which_objective,weight):
     os.chdir(self.directory)
     # Get all subdirectories
-    dir_list = next(os.walk('.'))[1]
+    dir_list_all = next(os.walk('.'))[1]
     # Filter those beginning with self.name
-    for dir in dir_list:
-      if (len(dir)<len(self.name)+1):
-        dir_list.remove(dir)
-      elif (dir[0:len(self.name)+1]!=self.name+'_'):
-        dir_list.remove(dir)
-      elif (not dir[len(self.name)+1].isdigit()):
-        dir_list.remove(dir)
+    objective_number = []
+    dir_list = []
+    for dir in dir_list_all:
+      if ((len(dir)>=len(self.name)+1) and 
+          (dir[0:len(self.name)+1]==self.name+'_') and 
+          (dir[len(self.name)+1].isdigit())):
+        dir_list.append(dir)
+        objective_number.append(int(dir[len(self.name)+1::]))
+    # Sort by evaluation number
+    sort_indices = np.argsort(objective_number)
+    dir_list = np.array(dir_list)[sort_indices]
     objective = np.zeros(len(dir_list))
     for i in range(len(dir_list)):
       os.chdir(dir_list[i])
@@ -597,17 +602,27 @@ def finite_difference_derivative(x,function,args=None,epsilon=1e-2,method='forwa
     if (method=='centered'):
       x_r = np.copy(x)
       x_r[i] = x_r[i]+epsilon
-      function_r = function(x_r,*args)
+      if (args is not None):
+        function_r = function(x_r,*args)
+      else:
+        function_r = function(x_r)
       x_l = np.copy(x)
       x_l[i] = x_l[i]-epsilon
-      function_l = function(x_l,*args)
+      if (args is not None):
+        function_l = function(x_l,*args)
+      else:
+        function_l = function(x_l)
       dfdx[i] = (function_r-function_l)/(2*epsilon)
     if (method=='forward'):
       x_r = np.copy(x)
       x_l = np.copy(x)
       x_r[i] = x_r[i]+epsilon
-      function_l = function(x_r,*args)
-      function_r = function(x_l,*args)
+      if (args is not None):
+        function_l = function(x_r,*args)
+        function_r = function(x_l,*args)
+      else:
+        function_l = function(x_r)
+        function_r = function(x_l)        
       dfdx[i] = (function_r-function_l)/(epsilon)
       
   return dfdx

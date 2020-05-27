@@ -73,7 +73,7 @@ class vmecOptimization:
     # Read items from Fortran namelist
     nml = f90nml.read(vmecInputFilename)
     nml = nml.get("indata")
-    nfp = nml.get("nfp")
+    self.nfp = nml.get("nfp")
     mpol_input = nml.get("mpol")
     if (mpol_input<2):
       print('Error! mpol must be > 1.')
@@ -114,6 +114,7 @@ class vmecOptimization:
     self.boundary = np.hstack((rmnc,zmns))   
     self.boundary_opt = np.hstack((rmnc_opt,zmns_opt[1::]))
         
+    self.vmecOutputObject = None
     if (woutFilename is None):
       [error_code,self.vmecOutputObject] = self.evaluate_vmec() # Current boundary evaluation
       if (error_code != 0):
@@ -241,10 +242,26 @@ class vmecOptimization:
     if (exit_code == 0):
       # Read from new equilibrium
       outputFileName = "wout_"+input_file[6::]+".nc"
-
       vmecOutput_new = readVmecOutput(outputFileName,self.ntheta,self.nzeta)
       if (boundary is not None and update):
         self.vmecOutputObject = vmecOutput_new
+    # Try with new axis
+    elif (exit_code == 1):
+      print('Trying again with a modified axis shape.')
+      [raxis_cc, zaxis_cs] = self.modify_axis(boundary)
+      namelist_new["raxis"] = raxis_cc
+      namelist_new["zaxis"] = zaxis_cs
+      self.print_namelist(input_file,namelist=namelist_new)
+      exit_code = self.call_vmec(input_file)
+      print('Modified axis shape resulted in error code '+str(exit_code)+'.')
+      if (exit_code == 0):
+        # Read from new equilibrium
+        outputFileName = "wout_"+input_file[6::]+".nc"
+        vmecOutput_new = readVmecOutput(outputFileName,self.ntheta,self.nzeta)
+        if (boundary is not None and update):
+          self.vmecOutputObject = vmecOutput_new
+      else:
+        vmecOutput_new = None
     else:
       vmecOutput_new = None
 
@@ -355,8 +372,15 @@ class vmecOptimization:
     if (boundary is not None and (boundary!=self.boundary_opt).any()):
       [error_code,vmecOutputObject] = self.evaluate_vmec(boundary=boundary,update=update)
       if (error_code != 0):
-        print('VMEC returned with an error when evaluating new boundary in evaluate_vmec_objective. \
-              Objective function will be set to 1e12')
+        print('VMEC returned with an error when evaluating new boundary in evaluate_vmec_objective.')
+      # Try with modified axis
+      if (error_code == 1):
+        print('Trying again with a modified axis shape.')
+        [raxis_cc, zaxis_cs] = self.modify_axis(boundary)
+        self.namelist["raxis_cc"] = raxis_cc
+        self.namelist["zaxis_cs"] = zaxis_cs
+      else:
+        print('Objective function will be set to 1e12')
     else:
       vmecOutputObject = self.vmecOutputObject
     # Reset old boundary 
@@ -376,6 +400,45 @@ class vmecOptimization:
       return objective_function
     else:
       return 1e12
+              
+  def modify_axis(self,boundary=None):
+    if (boundary is None):
+      boundary = self.boundary
+    RBC = boundary[0:self.mnmax]
+    ZBS = boundary[self.mnmax::]
+    if (self.vmecOutputObject is None):
+      zetas = np.linspace(0,2*np.pi,self.nzeta+1)
+      thetas = np.linspace(0,2*np.pi,self.ntheta+1)
+      zetas = np.delete(zetas,-1)
+      thetas = np.delete(thetas,-1)
+    else:
+      zetas = self.vmecOutputObject.zetas
+      thetas = self.vmecOutputObject.thetas
+    
+    R0 = np.zeros(np.shape(zetas))
+    Z0 = np.zeros(np.shape(zetas))
+    Rpi = np.zeros(np.shape(zetas))
+    Zpi = np.zeros(np.shape(zetas))
+    for im in range(self.mnmax):
+      angle = -self.nfp*self.xn[im]*zetas
+      R0 = R0 + RBC[im]*np.cos(angle)
+      Z0 = Z0 + ZBS[im]*np.sin(angle)
+      angle = self.xm[im]*np.pi - self.nfp*self.xn[im]*zetas
+      Rpi = Rpi + RBC[im]*np.cos(angle)
+      Zpi = Zpi + ZBS[im]*np.sin(angle)
+    Raxis = 0.5*(Rpi + R0)
+    Zaxis = 0.5*(Zpi + Z0)
+    # Now Fourier transform 
+    raxis_cc = np.zeros(20)
+    zaxis_cs = np.zeros(20)
+    for n in range(20):
+      angle = -n*self.nfp*zetas
+      raxis_cc[n] = np.sum(Raxis*np.cos(angle))/np.sum(np.cos(angle)**2)
+      if (n > 0):
+        zaxis_cs[n] = np.sum(Zaxis*np.sin(angle))/np.sum(np.sin(angle)**2)
+    print(raxis_cc)
+    print(zaxis_cs)
+    return raxis_cc, zaxis_cs
 
   def vmec_shape_gradient(self,boundary=None,which_objective='iota',weight_function=axis_weight,update=True):
     """

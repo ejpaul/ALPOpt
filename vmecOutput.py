@@ -8,22 +8,7 @@ class readVmecOutput:
     self.wout_filename = wout_filename
     self.input_filename = 'input.'+wout_filename.split('.')[0][5::]
     self.directory = os.getcwd()
-    
-    self.ntheta = ntheta
-    self.nzeta = nzeta
-    thetas = np.linspace(0,2*np.pi,ntheta+1)
-    zetas = np.linspace(0,2*np.pi,nzeta+1)
-    thetas = np.delete(thetas,-1)
-    zetas = np.delete(zetas,-1)
-    [thetas_2d,zetas_2d] = np.meshgrid(thetas,zetas)
-    self.thetas = thetas
-    self.zetas = zetas
-    self.dtheta = thetas[1]-thetas[0]
-    self.dzeta = zetas[1]-zetas[0]
-    self.thetas_2d = thetas_2d
-    self.zetas_2d = zetas_2d
-    self.mu0 = 4*np.pi*1.0e-7
-    
+       
     f = netcdf.netcdf_file(self.wout_filename,'r',mmap=False)
     self.rmnc = f.variables["rmnc"][()]
     self.zmns = f.variables["zmns"][()]
@@ -63,7 +48,23 @@ class readVmecOutput:
     self.nfp = f.variables["nfp"][()]
     self.sign_jac = f.variables["signgs"][()]
     
-  def d_r_d_u(self,isurf):
+    self.ntheta = ntheta
+    self.nzeta = nzeta
+    self.thetas = np.linspace(0,2*np.pi,ntheta+1)
+    self.zetas = np.linspace(0,2*np.pi/self.nfp,nzeta+1)
+    self.thetas = np.delete(self.thetas,-1)
+    self.zetas = np.delete(self.zetas,-1)
+    [self.thetas_2d,self.zetas_2d] = np.meshgrid(self.thetas,self.zetas)
+    self.dtheta = self.thetas[1]-self.thetas[0]
+    self.dzeta = self.zetas[1]-self.zetas[0]
+    
+    self.zetas_full = np.linspace(0,2*np.pi,self.nfp*nzeta+1)
+    self.zetas_full = np.delete(self.zetas_full,-1)
+    [self.thetas_2d_full,self.zetas_2d_full] = np.meshgrid(self.thetas,self.zetas_full)
+    
+    self.mu0 = 4*np.pi*1.0e-7
+    
+  def d_r_d_u(self,isurf=-1):
     this_rmnc = self.rmnc[isurf,:]
     this_zmns = self.zmns[isurf,:]
     
@@ -79,7 +80,7 @@ class readVmecOutput:
     dYdu = dRdu*np.sin(self.zetas_2d)
     return dXdu, dYdu, dZdu
   
-  def d_r_d_v(self,isurf):
+  def d_r_d_v(self,isurf=-1):
     this_rmnc = self.rmnc[isurf,:]
     this_zmns = self.zmns[isurf,:]
     
@@ -137,36 +138,36 @@ class readVmecOutput:
     It_half = self.sign_jac*2*np.pi*self.bsubumnc[:,0]/self.mu0
     return It_half
 
-  def compute_N(self,isurf):  
+  def compute_N(self,isurf=-1,theta=None,zeta=None):  
     [dxdtheta, dxdzeta, dydtheta, dydzeta, dzdtheta, dzdzeta] = \
-      self.position_first_derivatives(isurf)
+      self.position_first_derivatives(isurf,theta,zeta)
   
-    Nx = dydzeta*dzdtheta - dydtheta*dzdzeta
-    Ny = dzdzeta*dxdtheta - dzdtheta*dxdzeta
-    Nz = dxdzeta*dydtheta - dxdtheta*dydzeta
+    Nx = -dydzeta*dzdtheta + dydtheta*dzdzeta
+    Ny = -dzdzeta*dxdtheta + dzdtheta*dxdzeta
+    Nz = -dxdzeta*dydtheta + dxdtheta*dydzeta
     return Nx, Ny, Nz
   
-  def compute_N_derivatives(self,isurf):
+  def compute_N_derivatives(self,isurf=-1,theta=None,zeta=None):
     [dxdtheta, dxdzeta, dydtheta, dydzeta, dzdtheta, dzdzeta] = \
-      self.position_first_derivatives(isurf)
+      self.position_first_derivatives(isurf,theta,zeta)
     [d2xdtheta2, d2xdzeta2, d2xdthetadzeta, d2ydtheta2, d2ydzeta2, d2ydthetadzeta, \
-      d2zdtheta2, d2zdzeta2, d2zdthetadzeta] = self.position_second_derivatives(isurf)
+      d2zdtheta2, d2zdzeta2, d2zdthetadzeta] = self.position_second_derivatives(isurf,theta,zeta)
 
-    dNxdtheta = d2ydthetadzeta*dzdtheta + dydzeta*d2zdtheta2 \
-      - d2ydtheta2*dzdzeta - dydtheta*d2zdthetadzeta
-    dNxdzeta = d2ydzeta2*dzdtheta + dydzeta*d2zdthetadzeta \
-      - d2ydthetadzeta*dzdzeta - dydtheta*d2zdzeta2
-    dNydtheta = d2zdthetadzeta*dxdtheta + dzdzeta*d2xdtheta2 \
-      - d2zdtheta2*dxdzeta - dzdtheta*d2xdthetadzeta 
-    dNydzeta = d2zdzeta2*dxdtheta + dzdzeta*d2xdthetadzeta \
-      - d2zdthetadzeta*dxdzeta - dzdtheta*d2xdzeta2 
-    dNzdtheta = d2xdthetadzeta*dydtheta + dxdzeta*d2ydtheta2 \
-      - d2xdtheta2*dydzeta - dxdtheta*d2ydthetadzeta
-    dNzdzeta = d2xdzeta2*dydtheta + dxdzeta*d2ydthetadzeta \
-      - d2xdthetadzeta*dydzeta - dxdtheta*d2ydzeta2
+    dNxdtheta = -d2ydthetadzeta*dzdtheta - dydzeta*d2zdtheta2 \
+      + d2ydtheta2*dzdzeta + dydtheta*d2zdthetadzeta
+    dNxdzeta = -d2ydzeta2*dzdtheta - dydzeta*d2zdthetadzeta \
+      + d2ydthetadzeta*dzdzeta + dydtheta*d2zdzeta2
+    dNydtheta = -d2zdthetadzeta*dxdtheta - dzdzeta*d2xdtheta2 \
+      + d2zdtheta2*dxdzeta + dzdtheta*d2xdthetadzeta 
+    dNydzeta = -d2zdzeta2*dxdtheta - dzdzeta*d2xdthetadzeta \
+      + d2zdthetadzeta*dxdzeta + dzdtheta*d2xdzeta2 
+    dNzdtheta = -d2xdthetadzeta*dydtheta - dxdzeta*d2ydtheta2 \
+      + d2xdtheta2*dydzeta + dxdtheta*d2ydthetadzeta
+    dNzdzeta = -d2xdzeta2*dydtheta - dxdzeta*d2ydthetadzeta \
+      + d2xdthetadzeta*dydzeta + dxdtheta*d2ydzeta2
     return dNxdtheta, dNxdzeta, dNydtheta, dNydzeta, dNzdtheta, dNzdzeta
   
-  def compute_n_derivatives(self,isurf):
+  def compute_n_derivatives(self,isurf=-1):
     [Nx,Ny,Nz] = self.compute_N(isurf)
     [dNxdtheta, dNxdzeta, dNydtheta, dNydzeta, dNzdtheta, dNzdzeta] = \
       self.compute_N_derivatives(isurf)
@@ -182,21 +183,27 @@ class readVmecOutput:
     return dnxdtheta, dnxdzeta, dnydtheta, dnydzeta, dnzdtheta, dnzdzeta
   
   # Returns X, Y, Z at isurf point on full mesh 
-  def compute_position(self,isurf):
+  def compute_position(self,isurf=-1,full=False):
     this_rmnc = self.rmnc[isurf,:]
     this_zmns = self.zmns[isurf,:] 
 
-    R = np.zeros(np.shape(self.thetas_2d))
-    Z = np.zeros(np.shape(self.thetas_2d))
+    if (full):
+      theta = self.thetas_2d_full
+      zeta = self.zetas_2d_full
+    else:
+      theta = self.thetas_2d
+      zeta = self.zetas_2d
+    R = np.zeros(np.shape(theta))
+    Z = np.zeros(np.shape(zeta))
     for im in range(self.mnmax):
-      angle = self.xm[im]*self.thetas_2d - self.xn[im]*self.zetas_2d
+      angle = self.xm[im]*theta - self.xn[im]*zeta
       cos_angle = np.cos(angle)
       sin_angle = np.sin(angle)
       R = R + this_rmnc[im]*cos_angle
       Z = Z + this_zmns[im]*sin_angle
-    X = R*np.cos(self.zetas_2d)
-    Y = R*np.sin(self.zetas_2d)
-    return X, Y, Z
+    X = R*np.cos(zeta)
+    Y = R*np.sin(zeta)
+    return X, Y, Z, R
 
   # Integrated rotational transform with weight function
   def evaluate_iota_objective(self,weight):
@@ -206,22 +213,38 @@ class readVmecOutput:
   def evaluate_well_objective(self,weight):
     return 4*np.pi*np.pi*np.sum(weight(self.s_half)*self.vp)*self.ds
   
-  def area(self,isurf):
-    [Nx,Ny,Nz] = self.compute_N(isurf)
+  def jacobian(self,isurf=-1,theta=None,zeta=None):
+    [Nx,Ny,Nz] = self.compute_N(isurf,theta=theta,zeta=zeta)
     norm_normal = np.sqrt(Nx**2 + Ny**2 + Nz**2)
-    area = np.sum(norm_normal)*self.dtheta*self.dzeta
+    return norm_normal
+  
+  def normalized_jacobian(self,isurf=-1,theta=None,zeta=None):
+    norm_normal = self.jacobian(isurf,theta,zeta)
+    area = self.area(isurf,theta,zeta)
+    return norm_normal*4*np.pi*np.pi/(area)
+  
+  def area(self,isurf=-1,theta=None,zeta=None):
+    [Nx,Ny,Nz] = self.compute_N(isurf,theta,zeta)
+    norm_normal = np.sqrt(Nx**2 + Ny**2 + Nz**2)
+    area = np.sum(norm_normal)*self.dtheta*self.dzeta*self.nfp
     return area
   
-  def position_first_derivatives(self,isurf):
+  def position_first_derivatives(self,isurf=-1,theta=None,zeta=None):
     this_rmnc = self.rmnc[isurf,:]
     this_zmns = self.zmns[isurf,:] 
-    dRdtheta = np.zeros(np.shape(self.thetas_2d))
-    dzdtheta = np.zeros(np.shape(self.thetas_2d))
-    dRdzeta = np.zeros(np.shape(self.thetas_2d))
-    dzdzeta = np.zeros(np.shape(self.thetas_2d))
-    R = np.zeros(np.shape(self.thetas_2d))
+    if (theta is None and zeta is None):
+      theta = self.thetas_2d
+      zeta = self.zetas_2d
+    elif (np.array(theta).shape != np.array(zeta).shape):
+      print('Incorrect shape of theta and zeta in position_first_derivatives')
+      sys.exit(0)
+    dRdtheta = np.zeros(np.shape(theta))
+    dzdtheta = np.zeros(np.shape(theta))
+    dRdzeta = np.zeros(np.shape(theta))
+    dzdzeta = np.zeros(np.shape(theta))
+    R = np.zeros(np.shape(theta))
     for im in range(self.mnmax):
-      angle = self.xm[im]*self.thetas_2d - self.xn[im]*self.zetas_2d
+      angle = self.xm[im]*theta - self.xn[im]*zeta
       cos_angle = np.cos(angle)
       sin_angle = np.sin(angle)
       dRdtheta = dRdtheta - self.xm[im]*this_rmnc[im]*sin_angle
@@ -229,29 +252,35 @@ class readVmecOutput:
       dRdzeta = dRdzeta + self.xn[im]*this_rmnc[im]*sin_angle
       dzdzeta = dzdzeta - self.xn[im]*this_zmns[im]*cos_angle
       R = R + this_rmnc[im]*cos_angle
-    dxdtheta = dRdtheta*np.cos(self.zetas_2d)
-    dydtheta = dRdtheta*np.sin(self.zetas_2d)
-    dxdzeta = dRdzeta*np.cos(self.zetas_2d) - R*np.sin(self.zetas_2d)
-    dydzeta = dRdzeta*np.sin(self.zetas_2d) + R*np.cos(self.zetas_2d)
+    dxdtheta = dRdtheta*np.cos(zeta)
+    dydtheta = dRdtheta*np.sin(zeta)
+    dxdzeta = dRdzeta*np.cos(zeta) - R*np.sin(zeta)
+    dydzeta = dRdzeta*np.sin(zeta) + R*np.cos(zeta)
     return dxdtheta, dxdzeta, dydtheta, dydzeta, dzdtheta, dzdzeta
   
-  def position_second_derivatives(self,isurf):
+  def position_second_derivatives(self,isurf=-1,theta=None,zeta=None):
     this_rmnc = self.rmnc[isurf,:]
     this_zmns = self.zmns[isurf,:] 
-    
-    d2Rdtheta2 = np.zeros(np.shape(self.thetas_2d))
-    d2Rdzeta2 = np.zeros(np.shape(self.thetas_2d))
-    d2Zdtheta2 = np.zeros(np.shape(self.thetas_2d))
-    d2Zdzeta2 = np.zeros(np.shape(self.thetas_2d))
-    d2Rdthetadzeta = np.zeros(np.shape(self.thetas_2d))
-    d2Zdthetadzeta = np.zeros(np.shape(self.thetas_2d))
-    dRdtheta = np.zeros(np.shape(self.thetas_2d))
-    dzdtheta = np.zeros(np.shape(self.thetas_2d))
-    dRdzeta = np.zeros(np.shape(self.thetas_2d))
-    dzdzeta = np.zeros(np.shape(self.thetas_2d))
-    R = np.zeros(np.shape(self.thetas_2d))
+    if (theta is None and zeta is None):
+      theta = self.thetas_2d
+      zeta = self.zetas_2d
+    elif (np.array(theta).shape != np.array(zeta).shape):
+      print('Incorrect shape of theta and zeta in position_first_derivatives')
+      sys.exit(0)
+   
+    d2Rdtheta2 = np.zeros(np.shape(theta))
+    d2Rdzeta2 = np.zeros(np.shape(theta))
+    d2Zdtheta2 = np.zeros(np.shape(theta))
+    d2Zdzeta2 = np.zeros(np.shape(theta))
+    d2Rdthetadzeta = np.zeros(np.shape(theta))
+    d2Zdthetadzeta = np.zeros(np.shape(theta))
+    dRdtheta = np.zeros(np.shape(theta))
+    dzdtheta = np.zeros(np.shape(theta))
+    dRdzeta = np.zeros(np.shape(theta))
+    dzdzeta = np.zeros(np.shape(theta))
+    R = np.zeros(np.shape(theta))
     for im in range(self.mnmax):
-      angle = self.xm[im]*self.thetas_2d - self.xn[im]*self.zetas_2d
+      angle = self.xm[im]*theta - self.xn[im]*zeta
       cos_angle = np.cos(angle)
       sin_angle = np.sin(angle)
       R = R + this_rmnc[im]*cos_angle
@@ -265,18 +294,18 @@ class readVmecOutput:
       dzdtheta = dzdtheta + self.xm[im]*this_zmns[im]*cos_angle
       dRdzeta = dRdzeta + self.xn[im]*this_rmnc[im]*sin_angle
       dzdzeta = dzdzeta - self.xn[im]*this_zmns[im]*cos_angle
-    d2xdtheta2 = d2Rdtheta2*np.cos(self.zetas_2d)
-    d2ydtheta2 = d2Rdtheta2*np.sin(self.zetas_2d)
-    d2xdzeta2 = d2Rdzeta2*np.cos(self.zetas_2d) \
-      - 2*dRdzeta*np.sin(self.zetas_2d) - R*np.cos(self.zetas_2d)
-    d2ydzeta2 = d2Rdzeta2*np.sin(self.zetas_2d) \
-      + 2*dRdzeta*np.cos(self.zetas_2d) - R*np.sin(self.zetas_2d)
-    d2xdthetadzeta = d2Rdthetadzeta*np.cos(self.zetas_2d) - dRdtheta*np.sin(self.zetas_2d)
-    d2ydthetadzeta = d2Rdthetadzeta*np.sin(self.zetas_2d) + dRdtheta*np.cos(self.zetas_2d)
+    d2xdtheta2 = d2Rdtheta2*np.cos(zeta)
+    d2ydtheta2 = d2Rdtheta2*np.sin(zeta)
+    d2xdzeta2 = d2Rdzeta2*np.cos(zeta) \
+      - 2*dRdzeta*np.sin(zeta) - R*np.cos(zeta)
+    d2ydzeta2 = d2Rdzeta2*np.sin(zeta) \
+      + 2*dRdzeta*np.cos(zeta) - R*np.sin(zeta)
+    d2xdthetadzeta = d2Rdthetadzeta*np.cos(zeta) - dRdtheta*np.sin(zeta)
+    d2ydthetadzeta = d2Rdthetadzeta*np.sin(zeta) + dRdtheta*np.cos(zeta)
     return d2xdtheta2, d2xdzeta2, d2xdthetadzeta, d2ydtheta2, d2ydzeta2, d2ydthetadzeta, \
       d2Zdtheta2, d2Zdzeta2, d2Zdthetadzeta
     
-  def mean_curvature(self,isurf):
+  def mean_curvature(self,isurf=-1):
     [dxdtheta, dxdzeta, dydtheta, dydzeta, dZdtheta, dZdzeta] = \
       self.position_first_derivatives(isurf)
     [d2xdtheta2, d2xdzeta2, d2xdthetadzeta, d2ydtheta2, d2ydzeta2, d2ydthetadzeta, \
@@ -297,4 +326,127 @@ class readVmecOutput:
     g = nx*d2xdzeta2 + ny*d2ydzeta2 + nz*d2Zdzeta2
     H = (e*G-2*f*F+g*E)/(E*G-F*F)
     return H
+  
+  # Check that theta and zeta are of correct size
+  # Shape of theta and zeta must be the same
+  def jacobian_derivatives(self,xm_sensitivity,xn_sensitivity,theta=None,zeta=None):
+    if (theta is None and zeta is None):
+      zeta = self.zetas_2d
+      theta = self.thetas_2d
+    if (theta.ndim != zeta.ndim):
+      print('Error! Incorrect dimensions for theta and zeta in jacobian_derivatives.')
+      sys.exit(0)
+    if (theta.ndim == 1):
+      dim1 = len(theta)
+      dim2 = 1
+    elif (theta.ndim == 2):
+      dim1 = len(theta[:,0])
+      dim2 = len(theta[0,:])
+    else:
+      print('Error! Incorrect dimensions for theta and zeta in jacobian_derivatives.')
+      sys.exit(0)
+    [dxdtheta, dxdzeta, dydtheta, dydzeta, dzdtheta, dzdzeta] = \
+      self.position_first_derivatives(-1,theta,zeta)
+    [Nx, Ny, Nz] = self.compute_N(-1,theta,zeta)
+    N = np.sqrt(Nx*Nx + Ny*Ny + Nz*Nz)
+    nx = Nx/N
+    ny = Ny/N
+    nz = Nz/N
+    
+    mnmax_sensitivity = len(xm_sensitivity)
+    
+    d2rdthetadrmnc = np.zeros((3,mnmax_sensitivity,dim1,dim2))
+    d2rdzetadrmnc = np.zeros((3,mnmax_sensitivity,dim1,dim2))
+    d2rdthetadzmns = np.zeros((3,mnmax_sensitivity,dim1,dim2))
+    d2rdzetadzmns = np.zeros((3,mnmax_sensitivity,dim1,dim2))
+    for imn in range(mnmax_sensitivity):
+      angle = xm_sensitivity[imn]*theta - self.nfp*xn_sensitivity[imn]*zeta
+      cos_angle = np.cos(angle)
+      sin_angle = np.sin(angle)
+      cos_zeta = np.cos(zeta)
+      sin_zeta = np.sin(zeta)
+      d2rdthetadrmnc[0,imn,:,:] = -xm_sensitivity[imn]*sin_angle*cos_zeta
+      d2rdthetadrmnc[1,imn,:,:] = -xm_sensitivity[imn]*sin_angle*sin_zeta
+      d2rdzetadrmnc[0,imn,:,:] = self.nfp*xn_sensitivity[imn]*sin_angle*cos_zeta - cos_angle*sin_zeta
+      d2rdzetadrmnc[1,imn,:,:] = self.nfp*xn_sensitivity[imn]*sin_angle*sin_zeta + cos_angle*cos_zeta
+      d2rdthetadzmns[2,imn,:,:] = xm_sensitivity[imn]*cos_angle
+      d2rdzetadzmns[2,imn,:,:] = -self.nfp*xn_sensitivity[imn]*cos_angle
+    dNdrmnc = (d2rdthetadrmnc[1,:,:,:]*dzdzeta - d2rdthetadrmnc[2,:,:,:]*dydzeta)*nx \
+      + (d2rdthetadrmnc[2,:,:,:]*dxdzeta - d2rdthetadrmnc[0,:,:,:]*dzdzeta)*ny \
+      + (d2rdthetadrmnc[0,:,:,:]*dydzeta - d2rdthetadrmnc[1,:,:,:]*dxdzeta)*nz \
+      + (dydtheta*d2rdzetadrmnc[2,:,:,:] - dzdtheta*d2rdzetadrmnc[1,:,:,:])*nx \
+      + (dzdtheta*d2rdzetadrmnc[0,:,:,:] - dxdtheta*d2rdzetadrmnc[2,:,:,:])*ny \
+      + (dxdtheta*d2rdzetadrmnc[1,:,:,:] - dydtheta*d2rdzetadrmnc[0,:,:,:])*nz
+    dNdzmns = (d2rdthetadzmns[1,:,:,:]*dzdzeta - d2rdthetadzmns[2,:,:,:]*dydzeta)*nx \
+      + (d2rdthetadzmns[2,:,:,:]*dxdzeta - d2rdthetadzmns[0,:,:,:]*dzdzeta)*ny \
+      + (d2rdthetadzmns[0,:,:,:]*dydzeta - d2rdthetadzmns[1,:,:,:]*dxdzeta)*nz \
+      + (dydtheta*d2rdzetadzmns[2,:,:,:] - dzdtheta*d2rdzetadzmns[1,:,:,:])*nx \
+      + (dzdtheta*d2rdzetadzmns[0,:,:,:] - dxdtheta*d2rdzetadzmns[2,:,:,:])*ny \
+      + (dxdtheta*d2rdzetadzmns[1,:,:,:] - dydtheta*d2rdzetadzmns[0,:,:,:])*nz
+    return dNdrmnc, dNdzmns
+
+  def radius_derivatives(self,xm_sensitivity,xn_sensitivity,theta=None,zeta=None):
+    if (theta is None and zeta is None):
+      zeta = self.zetas_2d
+      theta = self.thetas_2d
+    if (theta.ndim != zeta.ndim):
+      print('Error! Incorrect dimensions for theta and zeta in radius_derivatives.')
+      sys.exit(0)
+    if (theta.ndim == 1):
+      dim1 = len(theta)
+      dim2 = 1
+    elif (theta.ndim == 2):
+      dim1 = len(theta[:,0])
+      dim2 = len(theta[0,:])
+    else:
+      print('Error! Incorrect dimensions for theta and zeta in radius_derivatives.')
+      sys.exit(0)
+      
+    mnmax_sensitivity = len(xm_sensitivity)
+    
+    dRdrmnc = np.zeros((mnmax_sensitivity,dim1,dim2))
+    dRdzmns = np.zeros((mnmax_sensitivity,dim1,dim2))
+    for imn in range(mnmax_sensitivity):
+      angle = xm_sensitivity[imn]*theta - self.nfp*xn_sensitivity[imn]*zeta
+      cos_angle = np.cos(angle)
+      dRdrmnc[imn,:,:] = cos_angle
+    return dRdrmnc, dRdzmns
+  
+  def area_derivatives(self,xm_sensitivity,xn_sensitivity,theta=None,zeta=None):
+    [dNdrmnc, dNdzmns] = self.jacobian_derivatives(xm_sensitivity,xn_sensitivity,theta,zeta)
+    dareadrmnc = np.sum(dNdrmnc,axis=(1,2))*self.dtheta*self.dzeta*self.nfp
+    dareadzmns = np.sum(dNdzmns,axis=(1,2))*self.dtheta*self.dzeta*self.nfp
+    return dareadrmnc, dareadzmns
+  
+  def normalized_jacobian_derivatives(self,xm_sensitivity,xn_sensitivity,theta=None,zeta=None):
+    if (theta is None and zeta is None):
+      zeta = self.zetas_2d
+      theta = self.thetas_2d
+    if (theta.ndim != zeta.ndim):
+      print('Error! Incorrect dimensions for theta and zeta in normalized_jacobian_derivatives.')
+      sys.exit(0)
+    if (theta.ndim == 1):
+      dim1 = len(theta)
+      dim2 = 1
+    elif (theta.ndim == 2):
+      dim1 = len(theta[:,0])
+      dim2 = len(theta[0,:])
+    else:
+      print('Error! Incorrect dimensions for theta and zeta in normalized_jacobian_derivatives.')
+      sys.exit(0)
+    [dareadrmnc, dareadzmns] = self.area_derivatives(xm_sensitivity,xn_sensitivity,theta=theta,zeta=zeta)
+    [dNdrmnc, dNdzmns] = self.jacobian_derivatives(xm_sensitivity,xn_sensitivity,theta=theta,zeta=zeta)
+    area = self.area(theta=theta,zeta= zeta)
+    N = self.jacobian(theta=theta,zeta=zeta)
+    
+    mnmax_sensitivity = len(xm_sensitivity)
+    dnormalized_jacobiandrmnc = np.zeros((mnmax_sensitivity,dim1,dim2))
+    dnormalized_jacobiandzmns = np.zeros((mnmax_sensitivity,dim1,dim2))
+    for imn in range(mnmax_sensitivity):
+      dnormalized_jacobiandrmnc[imn,:,:] = dNdrmnc[imn]/area - N*dareadrmnc[imn]/(area*area)
+      dnormalized_jacobiandzmns[imn,:,:] = dNdzmns[imn]/area - N*dareadzmns[imn]/(area*area)
+    
+    return 4*np.pi*np.pi*dnormalized_jacobiandrmnc, 4*np.pi*np.pi*dnormalized_jacobiandzmns
+      
+    
     

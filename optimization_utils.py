@@ -278,7 +278,6 @@ class vmecOptimization:
       sys.exit(1)
       
     if ((boundary != self.boundary_opt).any()):
-      print("Creating new input object.")
       # Save old boundary if update=False
       if (update==False):
         boundary_old = np.copy(self.boundary_opt)
@@ -289,6 +288,7 @@ class vmecOptimization:
       # VMEC has not been called with this boundary
       self.vmec_evaluated = False
       directory_name = self.name+"_"+str(self.counter)
+      print("Creating new input object in "+directory_name)
       # Make directory for VMEC evaluations
       try:
         os.mkdir(directory_name)
@@ -303,11 +303,16 @@ class vmecOptimization:
       vmecInputObject.input_filename = input_file
       vmecInputObject.rbc = np.copy(self.boundary[0:self.mnmax])
       vmecInputObject.zbs = np.copy(self.boundary[self.mnmax::])
+      os.chdir(directory_name)
+      vmecInputObject.print_namelist()
+      os.chdir('..')
       # Reset old boundary 
       if (update==False):
         self.update_boundary_opt(boundary_old)
+      else:
+        self.vmecInputObject = vmecInputObject
     else:
-      vmecInputObject = self.vmecInputObject
+      vmecInputObject = copy.deepcopy(self.vmecInputObject)
 
     if (which_objective == 'volume'):
       objective_function = vmecInputObject.volume()
@@ -601,122 +606,6 @@ class vmecOptimization:
       
     return np.squeeze(gradient)
   
-#   def radius_derivatives(self,theta=None,zeta=None,boundary=None):
-#     if (boundary is None):
-#       boundary = self.boundary
-#     if (theta is None and zeta is None):
-#       zeta = self.vmecOutputObject.zetas_2d
-#       theta = self.vmecOutputObject.thetas_2d
-#     if (theta.ndim != zeta.ndim):
-#       print('Error! Incorrect dimensions for theta and zeta in radius_derivatives.')
-#       sys.exit(0)
-#     if (theta.ndim == 1):
-#       dim1 = len(theta)
-#       dim2 = 1
-#     elif (theta.ndim == 2):
-#       dim1 = len(theta[:,0])
-#       dim2 = len(theta[0,:])
-#     else:
-#       print('Error! Incorrect dimensions for theta and zeta in radius_derivatives.')
-#       sys.exit(0)
-    
-#     dRdrmnc = np.zeros((self.mnmax_sensitivity,dim1,dim2))
-#     dRdzmns = np.zeros((self.mnmax_sensitivity,dim1,dim2))
-#     for imn in range(self.mnmax_sensitivity):
-#       angle = self.xm_sensitivity[imn]*theta - self.nfp*self.xn_sensitivity[imn]*zeta
-#       cos_angle = np.cos(angle)
-#       dRdrmnc[imn,:,:] = cos_angle
-#     return dRdrmnc, dRdzmns
-  
-#   # Check that theta and zeta are of correct size
-#   # Shape of theta and zeta must be the same
-#   def jacobian_derivatives(self,theta=None,zeta=None,boundary=None):
-#     if (boundary is None):
-#       boundary = self.boundary
-#     if (theta is None and zeta is None):
-#       zeta = self.vmecOutputObject.zetas_2d
-#       theta = self.vmecOutputObject.thetas_2d
-#     if (theta.ndim != zeta.ndim):
-#       print('Error! Incorrect dimensions for theta and zeta in jacobian_derivatives.')
-#       sys.exit(0)
-#     if (theta.ndim == 1):
-#       dim1 = len(theta)
-#       dim2 = 1
-#     elif (theta.ndim == 2):
-#       dim1 = len(theta[:,0])
-#       dim2 = len(theta[0,:])
-#     else:
-#       print('Error! Incorrect dimensions for theta and zeta in jacobian_derivatives.')
-#       sys.exit(0)
-#     [dxdtheta, dxdzeta, dydtheta, dydzeta, dzdtheta, dzdzeta] = \
-#       self.vmecOutputObject.position_first_derivatives(-1,theta,zeta)
-#     [Nx, Ny, Nz] = self.vmecOutputObject.compute_N(-1,theta,zeta)
-#     N = np.sqrt(Nx*Nx + Ny*Ny + Nz*Nz)
-#     nx = Nx/N
-#     ny = Ny/N
-#     nz = Nz/N
-    
-#     d2rdthetadrmnc = np.zeros((3,self.mnmax_sensitivity,dim1,dim2))
-#     d2rdzetadrmnc = np.zeros((3,self.mnmax_sensitivity,dim1,dim2))
-#     d2rdthetadzmns = np.zeros((3,self.mnmax_sensitivity,dim1,dim2))
-#     d2rdzetadzmns = np.zeros((3,self.mnmax_sensitivity,dim1,dim2))
-#     for imn in range(self.mnmax_sensitivity):
-#       angle = self.xm_sensitivity[imn]*theta - self.nfp*self.xn_sensitivity[imn]*zeta
-#       cos_angle = np.cos(angle)
-#       sin_angle = np.sin(angle)
-#       cos_zeta = np.cos(zeta)
-#       sin_zeta = np.sin(zeta)
-#       d2rdthetadrmnc[0,imn,:,:] = -self.xm_sensitivity[imn]*sin_angle*cos_zeta
-#       d2rdthetadrmnc[1,imn,:,:] = -self.xm_sensitivity[imn]*sin_angle*sin_zeta
-#       d2rdzetadrmnc[0,imn,:,:] = self.nfp*self.xn_sensitivity[imn]*sin_angle*cos_zeta - cos_angle*sin_zeta
-#       d2rdzetadrmnc[1,imn,:,:] = self.nfp*self.xn_sensitivity[imn]*sin_angle*sin_zeta + cos_angle*cos_zeta
-#       d2rdthetadzmns[2,imn,:,:] = self.xm_sensitivity[imn]*cos_angle
-#       d2rdzetadzmns[2,imn,:,:] = -self.nfp*self.xn_sensitivity[imn]*cos_angle
-#     dNdrmnc = (d2rdthetadrmnc[1,:,:,:]*dzdzeta - d2rdthetadrmnc[2,:,:,:]*dydzeta)*nx \
-#       + (d2rdthetadrmnc[2,:,:,:]*dxdzeta - d2rdthetadrmnc[0,:,:,:]*dzdzeta)*ny \
-#       + (d2rdthetadrmnc[0,:,:,:]*dydzeta - d2rdthetadrmnc[1,:,:,:]*dxdzeta)*nz \
-#       + (dydtheta*d2rdzetadrmnc[2,:,:,:] - dzdtheta*d2rdzetadrmnc[1,:,:,:])*nx \
-#       + (dzdtheta*d2rdzetadrmnc[0,:,:,:] - dxdtheta*d2rdzetadrmnc[2,:,:,:])*ny \
-#       + (dxdtheta*d2rdzetadrmnc[1,:,:,:] - dydtheta*d2rdzetadrmnc[0,:,:,:])*nz
-#     dNdzmns = (d2rdthetadzmns[1,:,:,:]*dzdzeta - d2rdthetadzmns[2,:,:,:]*dydzeta)*nx \
-#       + (d2rdthetadzmns[2,:,:,:]*dxdzeta - d2rdthetadzmns[0,:,:,:]*dzdzeta)*ny \
-#       + (d2rdthetadzmns[0,:,:,:]*dydzeta - d2rdthetadzmns[1,:,:,:]*dxdzeta)*nz \
-#       + (dydtheta*d2rdzetadzmns[2,:,:,:] - dzdtheta*d2rdzetadzmns[1,:,:,:])*nx \
-#       + (dzdtheta*d2rdzetadzmns[0,:,:,:] - dxdtheta*d2rdzetadzmns[2,:,:,:])*ny \
-#       + (dxdtheta*d2rdzetadzmns[1,:,:,:] - dydtheta*d2rdzetadzmns[0,:,:,:])*nz
-#     return dNdrmnc, dNdzmns
-  
-#   # Evaluates jacobian at point (theta,zeta)
-#   def jacobian(self,theta,zeta,boundary=None):
-#     if (boundary is None):
-#       boundary = self.boundary
-#     rmnc = boundary[0:self.mnmax]
-#     zmns = boundary[self.mnmax::]
-#     dRdtheta = 0
-#     dRdzeta = 0
-#     dZdtheta = 0
-#     dZdzeta = 0
-#     R = 0
-#     for im in range(self.mnmax):
-#       angle = self.xm[im]*theta - self.nfp*self.xn[im]*zeta
-#       dRdtheta = dRdtheta - self.xm[im]*rmnc[im]*np.sin(angle)
-#       dRdzeta = dRdzeta + self.nfp*self.xn[im]*rmnc[im]*np.sin(angle)
-#       dZdtheta = dZdtheta + self.xm[im]*zmns[im]*np.cos(angle)
-#       dZdzeta = dZdzeta - self.nfp*self.xn[im]*zmns[im]*np.cos(angle)
-#       R = R + rmnc[im]*np.cos(angle)
-#     cos_zeta = np.cos(zeta)
-#     sin_zeta = np.sin(zeta) 
-#     dXdtheta = dRdtheta*cos_zeta
-#     dYdtheta = dRdtheta*sin_zeta
-#     dXdzeta = dRdzeta*cos_zeta - R*sin_zeta
-#     dYdzeta = dRdzeta*sin_zeta + R*cos_zeta
-
-#     Nx = dYdtheta*dZdzeta - dYdzeta*dZdtheta
-#     Ny = dZdtheta*dXdzeta - dZdzeta*dXdtheta
-#     Nz = dXdtheta*dYdzeta - dXdzeta*dYdtheta
-#     norm_normal = np.sqrt(Nx*Nx + Ny*Ny + Nz*Nz)
-#     return norm_normal
-  
   def test_jacobian(self,vmecInputObject=None):
     if (vmecInputObject is None):
       vmecInputObject = self.vmecInputObject
@@ -739,15 +628,9 @@ class vmecOptimization:
       return True
   
   def call_vmec(self,vmecInputObject):
-#     if (namelist is None):
-#       namelist = self.namelist
-    # Make a copy as we may be modifying namelist
-#     namelist_call = namelist.copy()
-    # First check for errors in axis and boundary
-#     raxis = namelist_call["raxis"]
-#     zaxis = namelist_call["zaxis"]
-#     orientable = self.test_jacobian(self.boundary)
-    orientable = self.test_jacobian()
+    if (vmecInputObject is None):
+      vmecInputObject = copy.deepcopy(vmecInputObject)
+    orientable = self.test_jacobian(vmecInputObject)
 
     if (not orientable):
       print("Requested boundary has ill-conditioned Jacobian. Surface is likely self-intersecting. I will not call"\
@@ -755,16 +638,10 @@ class vmecOptimization:
       return 15
     else:
       inSurface = vmecInputObject.test_axis()
-#       inSurface = self.test_axis(self.boundary,raxis,zaxis)
       if (not inSurface):
         print('Initial magnetic axis does not lie within requested boundary! Trying a modified axis shape.')
         vmecInputObject.modify_axis()
-        
-#         namelist_call["raxis"] = raxis
-#         namelist_call["zaxis"] = zaxis
-#       else:
-#        print('Initial magnetic axis lies within requested boundary.')
-        
+                
     # VMEC error codes (from vmec_params.f) :
     # norm_term_flag=0
     # bad_jacobian_flag=1
@@ -778,8 +655,6 @@ class vmecOptimization:
     # bsub_bad_js1_flag=12
     # r01_bad_value_flag=13
     # arz_bad_value_flag=14
-#     self.print_namelist(input_file,namelist=namelist_call)
-#     self.callVMEC_function(input_file)
     vmecInputObject.print_namelist()
     self.callVMEC_function(vmecInputObject.input_filename)
     # Check for VMEC errors
@@ -799,7 +674,7 @@ class vmecOptimization:
     
     return error_code
   
-  def optimization_plot(self,which_objective,weight):
+  def optimization_plot(self,which_objective,weight=axis_weight,objective_type='vmec'):
     os.chdir(self.directory)
     # Get all subdirectories
     dir_list_all = next(os.walk('.'))[1]
@@ -818,28 +693,47 @@ class vmecOptimization:
     objective = np.zeros(len(dir_list))
     for i in range(len(dir_list)):
       os.chdir(dir_list[i])
-      wout_filename = 'wout_'+dir_list[i]+'.nc'
-      if (os.path.exists(wout_filename)):
-        f = netcdf.netcdf_file(wout_filename,'r',mmap=False)
-        error_code = f.variables["ier_flag"][()]
-        if (error_code != 0):
-          print('VMEC completed with error code '+str(error_code)+' in '+dir+". Moving on to next directory. \
-            Objective function will be set to zero.")
-        else:
-          readVmecObject = readVmecOutput('wout_'+dir_list[i]+'.nc',self.ntheta,self.nzeta)
-          if (which_objective=='iota'):
-            objective[i] = readVmecObject.evaluate_iota_objective(weight)
-          elif (which_objective=='well'):
-            objective[i] = readVmecObject.evaluate_well_objective(weight)
-          elif (which_objective=='volume'):
-            objective[i] = readVmecObject.volume
-          elif (which_objective=='area'):
-            objective[i] = readVmecObject.area
+      if (objective_type == 'input'):
+        input_filename = 'input.'+dir_list[i]
+        readInputObject = readVmecInput(input_filename,self.ntheta,self.nzeta)
+        if (which_objective=='volume'):
+          objective[i] = readInputObject.volume()
+        elif (which_objective=='area'):
+          objective[i] = readInputObject.area()
+        elif (which_objective=='jacobian'):
+          objective[i] = readInputObject.jacobian()
+        elif (which_objective=='normalized_jacobian'):
+          normalized_jacobian = readInputObject.normalized_jacobian()
+          objective[i] = np.min(normalized_jacobian)
+        elif (which_objective=='radius'):
+          [X,Y,Z,R] = readInputObject.position()
+          objective[i] = np.min(R)
+      elif (objective_type == 'vmec'):
+        wout_filename = 'wout_'+dir_list[i]+'.nc'
+        if (os.path.exists(wout_filename)):
+          f = netcdf.netcdf_file(wout_filename,'r',mmap=False)
+          error_code = f.variables["ier_flag"][()]
+          if (error_code != 0):
+            print('VMEC completed with error code '+str(error_code)+' in '+dir+". Moving on to next directory. \
+              Objective function will be set to zero.")
           else:
-            print("Incorrect objective specified in optimization_plot!")
-            sys.exit(1)
-      else:
-        print("wout_filename not found in "+ dir+". Moving on to next directory Objective function will be set to zero.")
+            readVmecObject = readVmecOutput('wout_'+dir_list[i]+'.nc',self.ntheta,self.nzeta)
+            if (which_objective=='iota'):
+              objective[i] = readVmecObject.evaluate_iota_objective(weight)
+            elif (which_objective=='well'):
+              objective[i] = readVmecObject.evaluate_well_objective(weight)
+            elif (which_objective=='volume'):
+              objective[i] = readVmecObject.volume
+            elif (which_objective=='area'):
+              objective[i] = readVmecObject.area
+            elif (which_objective=='radius'):
+              [X,Y,Z,R] = readVmecObject.compute_position()
+              objective[i] = np.min(R)
+            else:
+              print("Incorrect objective specified in optimization_plot!")
+              sys.exit(1)
+        else:
+          print("wout_filename not found in "+ dir+". Moving on to next directory Objective function will be set to zero.")
       os.chdir('..')
     return objective
   
@@ -890,22 +784,35 @@ def finite_difference_derivative(x,function,args=None,epsilon=1e-2,method='forwa
     print('Error! Incorrect method passed to finite_difference_derivative.')
     sys.exit(1)
   
-  dfdx = np.zeros((len(x),dim1,dim2))
+  if (dim1 == 1 and dim2 == 1):
+    dfdx = np.zeros((len(x)))
+    ndim = 1
+  elif (dim1 != 1 and dim2 == 1):
+    dfdx = np.zeros((len(x),dim1))
+    ndim = 2
+  else:
+    dfdx = np.zeros((len(x),dim1,dim2))
+    ndim = 3
   for i in range(np.size(x)):
     if (method=='centered'):
       x_r = np.copy(x)
       x_r[i] = x_r[i]+epsilon
       if (args is not None):
-        function_r = function(x_r,*args)
+        function_r = function(x_r,*args).copy()
       else:
-        function_r = function(x_r)
+        function_r = function(x_r).copy()
       x_l = np.copy(x)
       x_l[i] = x_l[i]-epsilon
       if (args is not None):
-        function_l = function(x_l,*args)
+        function_l = function(x_l,*args).copy()
       else:
-        function_l = function(x_l)
-      dfdx[i,:,:] = (function_r-function_l)/(2*epsilon)
+        function_l = function(x_l).copy()
+      if (ndim == 3):
+        dfdx[i,:,:] = (function_r-function_l)/(2*epsilon)
+      elif (ndim == 2):
+        dfdx[i,:] = (function_r-function_l)/(2*epsilon)
+      elif (ndim == 1):
+        dfdx[i] = (function_r-function_l)/(2*epsilon)
     if (method=='forward'):
       x_r = np.copy(x)
       x_l = np.copy(x)
@@ -916,21 +823,13 @@ def finite_difference_derivative(x,function,args=None,epsilon=1e-2,method='forwa
       else:
         function_l = function(x_r)
         function_r = function(x_l)        
-      dfdx[i,:,:] = (function_r-function_l)/(epsilon)
-      
+      if (ndim == 3):
+        dfdx[i,:,:] = (function_r-function_l)/(epsilon)
+      elif (ndim == 2):
+        dfdx[i,:] = (function_r-function_l)/(epsilon)
+      elif (ndim == 1):
+        dfdx[i] = (function_r-function_l)/(epsilon)
   return dfdx
-
-# # Determine if (R0,Z0) lies in boundary defined by (R,Z) in toroidal plane
-# def point_in_polygon(R,Z,R0,Z0):
-#   ntheta = len(R)
-#   oddNodes = False
-#   j = ntheta-1
-#   for i in range(ntheta):
-#       if ((Z[i]<Z0 and Z[j]>=Z0) or (Z[j]<Z0 and Z[i]>=Z0)):
-#           if (R[i]+(Z0-Z[i])/(Z[j]-Z[i])*(R[j]-R[i])<R0):
-#               oddNodes = not oddNodes
-#       j = i
-#   return oddNodes
 
 def plot_surface_axis(vmecInputFilename,izeta=0,angle1=0,angle2=np.pi):
   ntheta = 500

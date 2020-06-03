@@ -401,6 +401,8 @@ class vmecOptimization:
       return np.ones(np.shape(self.vmecOutputObject.zetas_2d))
     elif (which_objective=='area'):
       print("Evaluating area shape gradient.")
+    elif (which_objective=='mean_curvature'):
+      print("Evaluating mean curvature shape gradient.")
     else:
       print("Error! vmec_shape_gradient called with incorrect value of"+which_objective)
       sys.exit(1)
@@ -413,9 +415,9 @@ class vmecOptimization:
         sys.exit(1)
     else:
       vmecOutputObject = self.vmecOutputObject
-    [Bx, By, Bz, theta_arclength] = vmecOutputObject.B_on_arclength_grid()
 
     if (which_objective == 'iota'):
+      [Bx, By, Bz, theta_arclength] = vmecOutputObject.B_on_arclength_grid()
       It_half = vmecOutputObject.compute_current()
       It_new = It_half + delta*weight_function(self.vmecOutputObject.s_half)
 
@@ -437,6 +439,7 @@ class vmecOptimization:
 
       shape_gradient = deltaB_dot_B/(2*np.pi*self.vmecOutputObject.mu0)
     elif (which_objective == 'well'):
+      [Bx, By, Bz, theta_arclength] = vmecOutputObject.B_on_arclength_grid()
       pres = vmecOutputObject.pres
       pres_new = pres + delta*weight_function(self.vmecOutputObject.s_half)
       
@@ -458,6 +461,19 @@ class vmecOptimization:
       shape_gradient = deltaB_dot_B/(self.vmecOutputObject.mu0) + weight_function(1)
     elif (which_objective == 'area'):
       shape_gradient = vmecOutputObject.mean_curvature(vmecOutputObject.ns-1)
+    elif (which_objective == 'mean_curvature'):
+      [dgthetathetadtheta, dgthetathetadzeta, dgthetazetadtheta, dgthetazetadzeta, \
+        dgzetazetadzeta, dgzetazetadtheta] = vmecOutputObject.metric_elements_derivatives(isurf)
+      [gthetatheta, gthetazeta, gzetazeta] = vmecOutputObject.metric_elements(isurf)
+      H = vmecOutputObject.mean_curvature(isurf)
+      [dHdtheta,dHdzeta] = vmecOutputObject.mean_curvature(isurf)
+      [Nx,Ny,Nz] = vmecOutputObject.compute_N(isurf)
+      [dNxdtheta, dNxdzeta, dNydtheta, dNydzeta, dNzdtheta, dNzdzeta] = \
+        vmecOutputObject.compute_N_derivatives(isurf)
+      norm_normal = np.sqrt(Nx*Nx + Ny*Ny + Nz*Nz)
+      dnorm_normaldtheta = (Nx*dNxdtheta + Ny*dNydtheta + Nz*dNzdtheta)/norm_normal
+      dnorm_normaldzeta = (Nx*dNxdzeta + Ny*dNydzeta + Nz*dNzdzeta)/norm_normal
+      
       
     return shape_gradient
   
@@ -510,6 +526,7 @@ class vmecOptimization:
     # Get all subdirectories
     dir_list = next(os.walk('.'))[1]
     # Filter those beginning with self.name
+    objective_number = []
     for dir in dir_list:
       if (len(dir)<len(self.name)+1):
         dir_list.remove(dir)
@@ -517,6 +534,11 @@ class vmecOptimization:
         dir_list.remove(dir)
       elif (not dir[len(self.name)+1].isdigit()):
         dir_list.remove(dir)
+      else:
+        objective_number.append(dir[len(self.name)::])
+    sort_indices = np.argsort(objective_number)
+    print(sort_indices)
+    dir_list = np.array(dir_list)[sort_indices]
     objective = np.zeros(len(dir_list))
     for i in range(len(dir_list)):
       os.chdir(dir_list[i])
@@ -597,17 +619,27 @@ def finite_difference_derivative(x,function,args=None,epsilon=1e-2,method='forwa
     if (method=='centered'):
       x_r = np.copy(x)
       x_r[i] = x_r[i]+epsilon
-      function_r = function(x_r,*args)
+      if (args is not None):
+        function_r = function(x_r,*args)
+      else:
+        function_r = function(x_r)
       x_l = np.copy(x)
       x_l[i] = x_l[i]-epsilon
-      function_l = function(x_l,*args)
+      if (args is not None):
+        function_l = function(x_l,*args)
+      else:
+        function_l = function(x_l)
       dfdx[i] = (function_r-function_l)/(2*epsilon)
     if (method=='forward'):
       x_r = np.copy(x)
       x_l = np.copy(x)
       x_r[i] = x_r[i]+epsilon
-      function_l = function(x_r,*args)
-      function_r = function(x_l,*args)
+      if (args is not None):
+        function_l = function(x_r,*args)
+        function_r = function(x_l,*args)
+      else:
+        function_l = function(x_r)
+        function_r = function(x_l)        
       dfdx[i] = (function_r-function_l)/(epsilon)
       
   return dfdx

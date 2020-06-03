@@ -443,8 +443,8 @@ class readVmecOutput:
     dnormalized_jacobiandrmnc = np.zeros((mnmax_sensitivity,dim1,dim2))
     dnormalized_jacobiandzmns = np.zeros((mnmax_sensitivity,dim1,dim2))
     for imn in range(mnmax_sensitivity):
-      dnormalized_jacobiandrmnc[imn,:,:] = dNdrmnc[imn]/area - N*dareadrmnc[imn]/(area*area)
-      dnormalized_jacobiandzmns[imn,:,:] = dNdzmns[imn]/area - N*dareadzmns[imn]/(area*area)
+      dnormalized_jacobiandrmnc[imn,:,:] = dNdrmnc[imn,:,:]/area - N*dareadrmnc[imn]/(area*area)
+      dnormalized_jacobiandzmns[imn,:,:] = dNdzmns[imn,:,:]/area - N*dareadzmns[imn]/(area*area)
     
     return 4*np.pi*np.pi*dnormalized_jacobiandrmnc, 4*np.pi*np.pi*dnormalized_jacobiandzmns
       

@@ -321,7 +321,7 @@ class readVmecInput:
     
     inSurface = np.zeros(self.nzeta)
     for izeta in range(self.nzeta):
-      inSurface[izeta] = point_in_polygon(R[izeta,:],Z[izeta],R0[izeta],Z0[izeta])
+      inSurface[izeta] = point_in_polygon(R[izeta,:],Z[izeta,:],R0[izeta],Z0[izeta])
     return np.all(inSurface)
   
   def modify_axis(self):
@@ -335,8 +335,7 @@ class readVmecInput:
 #       zetas = np.delete(zetas,-1)
 #     else:
 #       zetas = self.vmecOutputObject.zetas
-    zetas = self.zetas_2d
-    thetas = self.thetas_2d
+    zetas = self.zetas
       
     angle_1s = np.linspace(0,2*np.pi,20)
     angle_2s = np.linspace(0,2*np.pi,20)
@@ -526,6 +525,7 @@ class readVmecInput:
     return dNdrmnc, dNdzmns
 
   # Determine if (R0,Z0) lies in boundary defined by (R,Z) in toroidal plane
+  #TODO : test for correct sizes
 def point_in_polygon(R,Z,R0,Z0):
   ntheta = len(R)
   oddNodes = False

@@ -1,6 +1,8 @@
 import subprocess
 import sys
 import os
+sys.path.append('/Users/elizabethpaul/Documents/Research/simsopt_f2py/modules/VMEC')
+from vmec_class import VMEC
 
 class callVMEC_batch:
   def __init__(self,sample_input_filename,sample_batch):
@@ -51,3 +53,22 @@ class callVMEC_commandline:
     if (exit_code != 0):
       print('VMEC returned with an error (exit_code = '+str(exit_code)+')')
       sys.exit(1)
+      
+class callVMEC_interface:
+  def __init__(self,input_filename='',verbose=False,comm=0):
+    self.input_filename = input_filename
+    self.verbose = verbose
+    self.comm = comm
+    self.vmecObject = VMEC(input_file=input_filename,verbose=verbose,comm=comm)
+    
+  def callVMEC(self,input_filename):
+    if (input_filename is None):
+      inputFilename = self.input_filename
+    print('Calling VMEC from ' + os.getcwd())
+    self.vmecObject.run(input_file=input_filename)
+    exit_code = self.vmecObject.ictrl[1]
+    return exit_code
+    
+    
+
+    

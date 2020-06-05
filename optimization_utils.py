@@ -609,23 +609,24 @@ class vmecOptimization:
   def test_jacobian(self,vmecInputObject=None):
     if (vmecInputObject is None):
       vmecInputObject = self.vmecInputObject
-    # Compute Jacobian on fine grid to determine minimum 
-    zetas = np.linspace(0,2*np.pi/self.nfp,1000)
-    thetas = np.linspace(0,2*np.pi,1000)
-    zetas = np.delete(zetas,-1)
-    thetas = np.delete(thetas,-1)
-    [thetas_2d,zetas_2d] = np.meshgrid(thetas,zetas)
-    jac_grid = self.vmecInputObject.jacobian(thetas_2d,zetas_2d)
-    [theta_min,zeta_min] = np.unravel_index(np.argmin(jac_grid, axis=None), jac_grid.shape)
-    out = scipy.optimize.minimize(lambda angles : self.vmecInputObject.jacobian(angles[0],angles[1]),\
-      [thetas[theta_min],zetas[zeta_min]])
-    # normalize by average Jacobian
-    norm = np.sqrt(np.sum(jac_grid**2)/(np.size(jac_grid)))
-    jacobian_diagnostic = out.fun/norm
+    jac_grid = vmecInputObject.jacobian()
+    # Normalize by average Jacobian
+    norm = np.sum(jac_grid)/np.size(jac_grid)
+    jacobian_diagnostic = np.min(jac_grid)/norm
     if jacobian_diagnostic < self.jacobian_threshold:
       return False
     else:
       return True
+    
+  def test_boundary(self,vmecInputObject=None):
+    if (vmecInputObject is None):
+      vmecInputObject = self.vmecInputObject
+    [X,Y,Z,R] = vmecInputObject.position()
+    # Iterate over cross-sections
+    for izeta in range(self.nzeta):
+      if (self_intersect(R[izeta,:],Z[izeta,:])):
+        return False
+    return True
   
   def call_vmec(self,vmecInputObject):
     if (vmecInputObject is None):
@@ -701,7 +702,8 @@ class vmecOptimization:
         elif (which_objective=='area'):
           objective[i] = readInputObject.area()
         elif (which_objective=='jacobian'):
-          objective[i] = readInputObject.jacobian()
+          jacobian = readInputObject.jacobian()
+          objective[i] = np.min(jacobian)
         elif (which_objective=='normalized_jacobian'):
           normalized_jacobian = readInputObject.normalized_jacobian()
           objective[i] = np.min(normalized_jacobian)
@@ -896,3 +898,56 @@ def plot_surface_axis(vmecInputFilename,izeta=0,angle1=0,angle2=np.pi):
   plt.plot(R[izeta,:],Z[izeta,:])
   plt.plot(Raxis[izeta],Zaxis[izeta],marker='.')
   plt.show()
+  
+# Check if segment defined by (p1, p2) intersections segment defined by (p2, p4)
+def segment_intersect(p1,p2,p3,p4):
+  
+  assert(isinstance(p1,(list,np.ndarray)))
+  assert(len(p1)==2 and np.array(p1).ndim==1)
+  assert(isinstance(p2,(list,np.ndarray)))
+  assert(len(p2)==2 and np.array(p2).ndim==1)
+  assert(isinstance(p3,(list,np.ndarray)))
+  assert(len(p3)==2 and np.array(p3).ndim==1)
+  assert(isinstance(p4,(list,np.ndarray)))
+  assert(len(p4)==2 and np.array(p4).ndim==1)
+  
+  l1 = np.array(p3) - np.array(p1)
+  l2 = np.array(p2) - np.array(p1)
+  l3 = np.array(p4) - np.array(p1)
+  
+  # Check for intersection of bounding box 
+  b1 = [min(p1[0],p2[0]),min(p1[1],p2[1])]
+  b2 = [max(p1[0],p2[0]),max(p1[1],p2[1])]
+  b3 = [min(p3[0],p4[0]),min(p3[1],p4[1])]
+  b4 = [max(p3[0],p4[0]),max(p3[1],p4[1])]
+  
+  boundingBoxIntersect = (b1[0] <= b4[0]) and (b2[0] >= b3[0]) and (b1[1] <= b4[1]) and (b2[1] >= b3[1])
+  return ((l1[0]*l2[1]-l1[1]*l2[0])*(l3[0]*l2[1]-l3[1]*l2[0]) < 0) and boundingBoxIntersect
+
+def self_intersect(x,y):
+  assert(isinstance(x,(list,np.ndarray)))
+  assert(isinstance(y,(list,np.ndarray)))
+  assert(x.ndim==1 and y.ndim==1 and len(x)==len(y))
+  
+  # Make sure there are no repeated points
+  points = (np.array([x,y]).T).tolist()
+  assert (not any(points.count(z) > 1 for z in points))
+  # Repeat last point
+  points.append(points[0])
+  
+  npoints = len(points)
+  for i in range(npoints-1):
+    p1 = points[i]
+    p2 = points[i+1]
+    # Compare with all line segments that do not contain x[i] or x[i+1]
+    for j in range(i+2,npoints-1):
+      p3 = points[j]
+      p4 = points[j+1]
+      # Ignore if any points are in common with p1
+      if (p1==p3 or p2==p3 or p1==p4 or p2==p4):
+        continue
+      if (segment_intersect(p1,p2,p3,p4)):
+        return True
+  return False
+      
+      

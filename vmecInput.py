@@ -5,6 +5,7 @@ from FortranNamelistTools import *
 import optimization_utils
 from optimization_utils import *
 import f90nml
+import sys
 
 class readVmecInput:
   

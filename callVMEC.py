@@ -1,7 +1,6 @@
 import subprocess
 import sys
 import os
-sys.path.append('/Users/elizabethpaul/Documents/Research/simsopt_f2py/modules/VMEC')
 from vmec_class import VMEC
 
 class callVMEC_batch:

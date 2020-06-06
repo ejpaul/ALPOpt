@@ -118,11 +118,11 @@ class vmecOptimization:
     self.norm_normal = None
         
     self.vmecOutputObject = None
-    if (woutFilename is None):
-      [error_code,self.vmecOutputObject] = self.evaluate_vmec() # Current boundary evaluation
-      if (error_code != 0):
-        print('Unable to evaluate base VMEC equilibrium in vmecOptimization constructor.')
-    else:
+#     if (woutFilename is None):
+#       [error_code,self.vmecOutputObject] = self.evaluate_vmec() # Current boundary evaluation
+#       if (error_code != 0):
+#         print('Unable to evaluate base VMEC equilibrium in vmecOptimization constructor.')
+    if (woutFilename is not None):
       self.vmecOutputObject = readVmecOutput(woutFilename,self.ntheta,self.nzeta)  
       
   def evaluate_vmec(self,boundary=None,It=None,pres=None,update=True):
@@ -268,6 +268,8 @@ class vmecOptimization:
       print("Evaluating radius objective.")
     elif (which_objective=='normalized_jacobian'):
       print("Evaluating normalized jacobian objective.")
+    elif (which_objective=='proximity'):
+      print("Evaluating proximity objective.")
     else:
       print("incorrect value of which_objective in evaluate_input_objective.")
       sys.exit(1)
@@ -325,6 +327,8 @@ class vmecOptimization:
       objective_function = R
     elif (which_objective == 'normalized_jacobian'):
       objective_function = vmecInputObject.normalized_jacobian()
+    elif (which_objective == 'proximity'):
+      objective_function = vmecInputObject.proximity()
     return objective_function
   
   # Call VMEC with boundary specified by boundaryObjective to evaluate which_objective
@@ -495,6 +499,8 @@ class vmecOptimization:
       print("Evaluating radius objective gradient.")
     elif (which_objective=='normalized_jacobian'):
       print("Evaluating normalized_jacobian objective gradient.")
+    elif (which_objective=='proximity'):
+      print("Evaluating proximity objective gradient.")
     else:
       print("Error! evaluate_input_objective_grad called with incorrect value of which_objective.")
       sys.exit(1)  
@@ -543,15 +549,14 @@ class vmecOptimization:
       [dfdrmnc,dfdzmns] = vmecInputObject.area_derivatives(self.xm_sensitivity,self.xn_sensitivity)
     elif (which_objective == 'volume'):
       [dfdrmnc,dfdzmns] = vmecInputObject.volume_derivatives(self.xm_sensitivity,self.xn_sensitivity)
-
+    elif (which_objective == 'proximity'):
+      [dfdrmnc,dfdzmns] = vmecInputObject.proximity_derivatives(self.xm_sensitivity,self.xn_sensitivity)
+  
     if (dfdrmnc.ndim==1):
       gradient = np.hstack((dfdrmnc,dfdzmns[1::]))
-    elif (dfdrmnc.ndim==3):
-      gradient = np.vstack((dfdrmnc,dfdzmns[1::,:,:]))
     else:
-      print("Incorrect shape of derivatives encountered in evaluate_input_objective_grad.")
-      sys.exit(0)
-      
+      gradient = np.vstack((dfdrmnc,dfdzmns[1::,...]))
+
     return np.squeeze(gradient)
   
   # Call VMEC with boundary specified by boundaryObjective to evaluate which_objective and compute gradient
@@ -780,58 +785,64 @@ def parameter_derivatives(shape_gradient,readVmecOutputObject,mmax_sensitivity,n
   dfdzmns = -dfdzmns*readVmecOutputObject.dtheta*readVmecOutputObject.dzeta*readVmecOutputObject.nfp
   return dfdrmnc, dfdzmns, xm_sensitivity, xn_sensitivity
   
-# Approximates finite difference derivative with an N-point stencil with step size epsilon
-def finite_difference_derivative(x,function,args=None,epsilon=1e-2,method='forward',dim1=1,dim2=1):
-  if (np.any(method==['forward','centered'])):
-    print('Error! Incorrect method passed to finite_difference_derivative.')
-    sys.exit(1)
+# # Approximates finite difference derivative with an N-point stencil with step size epsilon
+# def finite_difference_derivative(x,function,args=None,epsilon=1e-2,method='forward',dim1=1,dim2=1):
+#   if (np.any(method==['forward','centered'])):
+#     print('Error! Incorrect method passed to finite_difference_derivative.')
+#     sys.exit(1)
   
-  if (dim1 == 1 and dim2 == 1):
-    dfdx = np.zeros((len(x)))
-    ndim = 1
-  elif (dim1 != 1 and dim2 == 1):
-    dfdx = np.zeros((len(x),dim1))
-    ndim = 2
-  else:
-    dfdx = np.zeros((len(x),dim1,dim2))
-    ndim = 3
-  for i in range(np.size(x)):
-    if (method=='centered'):
-      x_r = np.copy(x)
-      x_r[i] = x_r[i]+epsilon
-      if (args is not None):
-        function_r = function(x_r,*args).copy()
-      else:
-        function_r = function(x_r).copy()
-      x_l = np.copy(x)
-      x_l[i] = x_l[i]-epsilon
-      if (args is not None):
-        function_l = function(x_l,*args).copy()
-      else:
-        function_l = function(x_l).copy()
-      if (ndim == 3):
-        dfdx[i,:,:] = (function_r-function_l)/(2*epsilon)
-      elif (ndim == 2):
-        dfdx[i,:] = (function_r-function_l)/(2*epsilon)
-      elif (ndim == 1):
-        dfdx[i] = (function_r-function_l)/(2*epsilon)
-    if (method=='forward'):
-      x_r = np.copy(x)
-      x_l = np.copy(x)
-      x_r[i] = x_r[i]+epsilon
-      if (args is not None):
-        function_l = function(x_r,*args)
-        function_r = function(x_l,*args)
-      else:
-        function_l = function(x_r)
-        function_r = function(x_l)        
-      if (ndim == 3):
-        dfdx[i,:,:] = (function_r-function_l)/(epsilon)
-      elif (ndim == 2):
-        dfdx[i,:] = (function_r-function_l)/(epsilon)
-      elif (ndim == 1):
-        dfdx[i] = (function_r-function_l)/(epsilon)
-  return dfdx
+#   if (dim1 == 1 and dim2 == 1):
+#     dfdx = np.zeros((len(x)))
+#     ndim = 1
+#   elif (dim1 != 1 and dim2 == 1):
+#     dfdx = np.zeros((len(x),dim1))
+#     ndim = 2
+#   else:
+#     dfdx = np.zeros((len(x),dim1,dim2))
+#     ndim = 3
+  
+#   # Call function once to get size of output
+  
+#   dims = np.shape(function(x_r,*args).copy())
+  
+
+#   for i in range(np.size(x)):
+#     if (method=='centered'):
+#       x_r = np.copy(x)
+#       x_r[i] = x_r[i]+epsilon
+#       if (args is not None):
+#         function_r = function(x_r,*args).copy()
+#       else:
+#         function_r = function(x_r).copy()
+#       x_l = np.copy(x)
+#       x_l[i] = x_l[i]-epsilon
+#       if (args is not None):
+#         function_l = function(x_l,*args).copy()
+#       else:
+#         function_l = function(x_l).copy()
+#       if (ndim == 3):
+#         dfdx[i,:,:] = (function_r-function_l)/(2*epsilon)
+#       elif (ndim == 2):
+#         dfdx[i,:] = (function_r-function_l)/(2*epsilon)
+#       elif (ndim == 1):
+#         dfdx[i] = (function_r-function_l)/(2*epsilon)
+#     if (method=='forward'):
+#       x_r = np.copy(x)
+#       x_l = np.copy(x)
+#       x_r[i] = x_r[i]+epsilon
+#       if (args is not None):
+#         function_l = function(x_r,*args).copy()
+#         function_r = function(x_l,*args).copy()
+#       else:
+#         function_l = function(x_r).copy()
+#         function_r = function(x_l).copy()        
+#       if (ndim == 3):
+#         dfdx[i,:,:] = (function_r-function_l)/(epsilon)
+#       elif (ndim == 2):
+#         dfdx[i,:] = (function_r-function_l)/(epsilon)
+#       elif (ndim == 1):
+#         dfdx[i] = (function_r-function_l)/(epsilon)
+#   return dfdx
 
 def plot_surface_axis(vmecInputFilename,izeta=0,angle1=0,angle2=np.pi):
   ntheta = 500
@@ -949,5 +960,6 @@ def self_intersect(x,y):
       if (segment_intersect(p1,p2,p3,p4)):
         return True
   return False
+  
       
       

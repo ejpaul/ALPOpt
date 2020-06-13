@@ -55,7 +55,7 @@ class vmecOptimization:
   """
   def __init__(self,vmecInputFilename,mmax_sensitivity,
              nmax_sensitivity,callVMEC_function,name,delta_curr=10,delta_pres=10,
-             woutFilename=None,ntheta=100,nzeta=100):
+             woutFilename=None,ntheta=100,nzeta=100,minCurvatureRadius=0.3):
     self.mmax_sensitivity = mmax_sensitivity
     self.nmax_sensitivity = nmax_sensitivity
     [mnmax_sensitivity,xm_sensitivity,xn_sensitivity] = \
@@ -73,6 +73,7 @@ class vmecOptimization:
     self.ntheta = ntheta
     self.nzeta = nzeta
     self.jacobian_threshold = 1e-4
+    self.minCurvatureRadius = minCurvatureRadius
     
     self.vmecInputObject = readVmecInput(vmecInputFilename,ntheta,nzeta)
     self.nfp = self.vmecInputObject.nfp
@@ -118,10 +119,10 @@ class vmecOptimization:
     self.norm_normal = None
         
     self.vmecOutputObject = None
-#     if (woutFilename is None):
-#       [error_code,self.vmecOutputObject] = self.evaluate_vmec() # Current boundary evaluation
-#       if (error_code != 0):
-#         print('Unable to evaluate base VMEC equilibrium in vmecOptimization constructor.')
+    if (woutFilename is None):
+      [error_code,self.vmecOutputObject] = self.evaluate_vmec() # Current boundary evaluation
+      if (error_code != 0):
+        print('Unable to evaluate base VMEC equilibrium in vmecOptimization constructor.')
     if (woutFilename is not None):
       self.vmecOutputObject = readVmecOutput(woutFilename,self.ntheta,self.nzeta)  
       
@@ -198,6 +199,7 @@ class vmecOptimization:
       inputObject_new.ac_aux_f = list(It)
       inputObject_new.ac_aux_s = list(s_half)
       inputObject_new.pcurr_type = "line_segment_I"
+      print(It)
     if (pres is not None):
       s_half = self.vmecOutputObject.s_half
       if (self.vmecOutputObject.ns>101):
@@ -270,6 +272,8 @@ class vmecOptimization:
       print("Evaluating normalized jacobian objective.")
     elif (which_objective=='proximity'):
       print("Evaluating proximity objective.")
+    elif (which_objective=='summed_proximity'):
+      print("Evaluating summed proximity objective.")
     else:
       print("incorrect value of which_objective in evaluate_input_objective.")
       sys.exit(1)
@@ -328,7 +332,9 @@ class vmecOptimization:
     elif (which_objective == 'normalized_jacobian'):
       objective_function = vmecInputObject.normalized_jacobian()
     elif (which_objective == 'proximity'):
-      objective_function = vmecInputObject.proximity()
+      objective_function = vmecInputObject.proximity(min_curvature_radius=self.minCurvatureRadius)
+    elif (which_objective == 'summed_proximity'):
+      objective_function = vmecInputObject.summed_proximity(min_curvature_radius=self.minCurvatureRadius)
     return objective_function
   
   # Call VMEC with boundary specified by boundaryObjective to evaluate which_objective
@@ -501,6 +507,8 @@ class vmecOptimization:
       print("Evaluating normalized_jacobian objective gradient.")
     elif (which_objective=='proximity'):
       print("Evaluating proximity objective gradient.")
+    elif (which_objective=='summed_proximity'):
+      print("Evaluating summed proximity objective gradient.")
     else:
       print("Error! evaluate_input_objective_grad called with incorrect value of which_objective.")
       sys.exit(1)  
@@ -550,8 +558,12 @@ class vmecOptimization:
     elif (which_objective == 'volume'):
       [dfdrmnc,dfdzmns] = vmecInputObject.volume_derivatives(self.xm_sensitivity,self.xn_sensitivity)
     elif (which_objective == 'proximity'):
-      [dfdrmnc,dfdzmns] = vmecInputObject.proximity_derivatives(self.xm_sensitivity,self.xn_sensitivity)
-  
+      [dfdrmnc,dfdzmns] = vmecInputObject.proximity_derivatives(self.xm_sensitivity,self.xn_sensitivity,\
+        min_curvature_radius=self.minCurvatureRadius)
+    elif (which_objective == 'summed_proximity'):
+      [dfdrmnc,dfdzmns] = vmecInputObject.summed_proximity_derivatives(self.xm_sensitivity,self.xn_sensitivity,\
+        min_curvature_radius=self.minCurvatureRadius)
+
     if (dfdrmnc.ndim==1):
       gradient = np.hstack((dfdrmnc,dfdzmns[1::]))
     else:
@@ -662,7 +674,7 @@ class vmecOptimization:
     # r01_bad_value_flag=13
     # arz_bad_value_flag=14
     vmecInputObject.print_namelist()
-    self.callVMEC_function(vmecInputObject.input_filename)
+    self.callVMEC_function(vmecInputObject)
     # Check for VMEC errors
     wout_filename = "wout_"+vmecInputObject.input_filename[6::]+".nc"
     f = netcdf.netcdf_file(wout_filename,'r',mmap=False)
@@ -715,6 +727,10 @@ class vmecOptimization:
         elif (which_objective=='radius'):
           [X,Y,Z,R] = readInputObject.position()
           objective[i] = np.min(R)
+        elif (which_objective=='summed_proximity'):
+          objective[i] = readInputObject.summed_proximity(min_curvature_radius=self.minCurvatureRadius)
+        elif (which_objective=='effective_distance'):
+          objective[i] = readInputObject.effectiveDistance()
       elif (objective_type == 'vmec'):
         wout_filename = 'wout_'+dir_list[i]+'.nc'
         if (os.path.exists(wout_filename)):

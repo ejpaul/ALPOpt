@@ -41,7 +41,22 @@ class readVmecInput:
     [self.rbc,self.zbs] = self.read_boundary_input()
     
     self.update_grids(ntheta,nzeta)
-    self.min_curvature_radius = 1.0
+    self.min_curvature_radius = 0.3
+    
+  # updates self.namelist with attributes (except rbc/zbs)
+  def update_namelist(self):
+    self.namelist['nfp'] = self.nfp
+    self.namelist['raxis'] = self.raxis
+    self.namelist['zaxis'] = self.zaxis
+    self.namelist['curtor'] = self.curtor
+    self.namelist['ac_aux_f'] = self.ac_aux_f
+    self.namelist['ac_aux_s'] = self.ac_aux_s
+    self.namelist['pcurr_type'] = self.pcurr_type
+    self.namelist['am_aux_f'] = self.am_aux_f
+    self.namelist['am_aux_s'] = self.am_aux_s
+    self.namelist['pmass_type'] = self.pmass_type
+    self.namelist['mpol'] = self.mpol
+    self.namelist['ntor'] = self.ntor
     
   def update_modes(self,mpol,ntor):
     self.mpol = mpol
@@ -274,9 +289,10 @@ class readVmecInput:
     f = nx*d2xdthetadzeta + ny*d2ydthetadzeta + nz*d2Zdthetadzeta
     g = nx*d2xdzeta2 + ny*d2ydzeta2 + nz*d2Zdzeta2
     H = (e*G-2*f*F+g*E)/(E*G-F*F)
-    return H
+    return H    
   
   def print_namelist(self,input_filename=None,namelist=None):
+    self.update_namelist()
     if (namelist is None):
       namelist = self.namelist
     if (input_filename is None):
@@ -284,14 +300,16 @@ class readVmecInput:
     f = open(input_filename,'w')
     f.write("&INDATA\n")
     for item in namelist.keys():
-      if (not isinstance(namelist[item],(list, tuple, np.ndarray,str))):
-        f.write(item+"="+str(namelist[item])+"\n")
-      elif (isinstance(namelist[item],str)):
-        f.write(item+"="+"'"+str(namelist[item])+"'"+"\n")
-      elif (item not in ['rbc','zbs']):
-        f.write(item+"=")
-        f.writelines(map(lambda x:str(x)+" ",namelist[item]))
-        f.write("\n")
+      if namelist[item] is not None:
+        print(item)
+        if (not isinstance(namelist[item],(list, tuple, np.ndarray,str))):
+          f.write(item+"="+str(namelist[item])+"\n")
+        elif (isinstance(namelist[item],str)):
+          f.write(item+"="+"'"+str(namelist[item])+"'"+"\n")
+        elif (item not in ['rbc','zbs']):
+          f.write(item+"=")
+          f.writelines(map(lambda x:str(x)+" ",namelist[item]))
+          f.write("\n")
     # Write RBC
     for imn in range(self.mnmax):
       if (self.rbc[imn]!=0):
@@ -527,56 +545,25 @@ class readVmecInput:
       + (dxdtheta*d2rdzetadzmns[1,:,:,:] - dydtheta*d2rdzetadzmns[0,:,:,:])*nz
     return dNdrmnc, dNdzmns
   
-#   def proximity(self,derivatives=False):
-#     [X,Y,Z,R] = self.position()
-#     [dxdtheta, dxdzeta, dydtheta, dydzeta, dzdtheta, dzdzeta, dRdtheta, dRdzeta] = \
-#       self.position_first_derivatives()
-#     dldtheta = np.sqrt(dRdtheta**2 + dzdtheta**2)
-#     tR = dRdtheta/dldtheta
-#     tz = dzdtheta/dldtheta
-#     assert(np.allclose(tR**2 + tz**2, np.ones(np.shape(tR))))
-#     Qp = np.zeros((self.nzeta,self.ntheta))
-#     if derivatives:
-#       dQpdp1 = np.zeros((self.nzeta,self.ntheta,2))
-#       dQpdp2 = np.zeros((self.nzeta,self.ntheta,self.ntheta,2))
-#       dQpdtau2 = np.zeros((self.nzeta,self.ntheta,self.ntheta,2))
-#       dQpdlprime = np.zeros((self.nzeta,self.ntheta,self.ntheta))
-#     J = np.zeros(self.nzeta)
-#     for izeta in range(self.nzeta):
-#       for itheta in range(self.ntheta):
-#         psi = np.zeros(self.ntheta)
-#         if derivatives:
-#           dpsidp1 = np.zeros((self.ntheta,2))
-#         for ithetap in range(self.ntheta):
-#           p1 = [R[izeta,itheta],Z[izeta,itheta]]
-#           p2 = [R[izeta,ithetap],Z[izeta,ithetap]]
-#           tau2 = [tR[izeta,ithetap],tz[izeta,ithetap]]
-#           if (p1 != p2):
-#             Sc = self_contact_function(p1,p2,tau2) - 2*self.min_curvature_radius
-#             if derivatives:
-#               [dScdp1,dScdp2,dScdtau2] = self_contact_function_gradient(p1,p2,tau2) 
-#           else:
-#             Sc = 0
-#           if (Sc >= 0):
-#             psi[ithetap] = 0
-#           else:
-#             psi[ithetap] = 0.5*Sc**2
-#             if derivatives:
-#               dpsidp1[ithetap,:] = Sc*dScdp1
-#               dpsidp2 = Sc*dScdp2
-#               dpsidtau2 = Sc*dScdtau2
-#               dQpdp2[izeta,itheta,ithetap,:] = dpsidp2*dldtheta[izeta,ithetap]*self.dtheta
-#               dQpdtau2[izeta,itheta,ithetap,:] = dpsidtau2*dldtheta[izeta,ithetap]*self.dtheta
-#               dQpdlprime[izeta,itheta,ithetap] = psi[ithetap]*self.dtheta
-#         Qp[izeta,itheta] = np.dot(psi,dldtheta[izeta,:])*self.dtheta
-#         if derivatives:
-#           dQpdp1[izeta,itheta,:] = np.dot(dpsidp1.T,dldtheta[izeta,:])*self.dtheta
-#     if derivatives:
-#       return Qp, dQpdp1, dQpdp2, dQpdtau2, dQpdlprime
-#     else:
-#       return Qp
+  def effectiveDistance(self,l1=2,l2=0.5,s1=100,s2=100):
+    [X,Y,Z,R] = self.position()
+    effectiveDistance = np.zeros((self.nzeta,self.ntheta))
+    for izeta in range(self.nzeta):
+      effectiveDistance[izeta,:] = tanhCoulombPotential(R[izeta,:],Z[izeta,:],l1,l2,s1,s2)
+    return np.sum(effectiveDistance)*self.dtheta*self.dzeta
 
-  def proximity(self,derivatives=False):
+  def summed_proximity(self,min_curvature_radius=None):
+    proximity = self.proximity(min_curvature_radius=min_curvature_radius)
+    return np.sum(proximity)*self.dtheta*self.dzeta 
+  
+  def summed_proximity_derivatives(self,xm_sensitivity,xn_sensitivity,min_curvature_radius=None):
+    [dQpdrmnc, dQpdzmns] = self.proximity_derivatives(xm_sensitivity,xn_sensitivity,min_curvature_radius=min_curvature_radius)
+    return np.sum(dQpdrmnc,axis=(1,2))*self.dtheta*self.dzeta, np.sum(dQpdzmns,axis=(1,2))*self.dtheta*self.dzeta
+
+  def proximity(self,derivatives=False,min_curvature_radius=None):
+    if min_curvature_radius is None:
+      min_curvature_radius = self.min_curvature_radius
+    
     [X,Y,Z,R] = self.position()
     [dxdtheta, dxdzeta, dydtheta, dydzeta, dzdtheta, dzdzeta, dRdtheta, dRdzeta] = \
       self.position_first_derivatives()
@@ -593,17 +580,17 @@ class readVmecInput:
       if derivatives:
         [Qp[izeta,:],dQpdp1[izeta,...],dQpdp2[izeta,...],dQpdtau2[izeta,...],dQpdlprime[izeta,...]] = \
           proximity_slice(R[izeta,:],Z[izeta,:],tR[izeta,:],tz[izeta,:],dldtheta[izeta,:],derivatives=derivatives,\
-            min_curvature_radius=self.min_curvature_radius)
+            min_curvature_radius=min_curvature_radius)
       else:
         Qp[izeta,:] = proximity_slice(R[izeta,:],Z[izeta,:],tR[izeta,:],tz[izeta,:],dldtheta[izeta,:],derivatives=derivatives,\
-            min_curvature_radius=self.min_curvature_radius)
+            min_curvature_radius=min_curvature_radius)
     if derivatives:
       return self.dtheta*Qp, self.dtheta*dQpdp1, self.dtheta*dQpdp2, self.dtheta*dQpdtau2, self.dtheta*dQpdlprime 
     else:
       return self.dtheta*Qp
   
-  def proximity_derivatives(self,xm_sensitivity,xn_sensitivity):
-    [Qp, dQpdp1, dQpdp2, dQpdtau2, dQpdlprime] = self.proximity(derivatives=True)
+  def proximity_derivatives(self,xm_sensitivity,xn_sensitivity,min_curvature_radius=None):
+    [Qp, dQpdp1, dQpdp2, dQpdtau2, dQpdlprime] = self.proximity(derivatives=True,min_curvature_radius=min_curvature_radius)
     [X,Y,Z,R] = self.position() 
     [dxdtheta, dxdzeta, dydtheta, dydzeta, dzdtheta, dzdzeta, dRdtheta, dRdzeta] = \
       self.position_first_derivatives()
@@ -732,6 +719,39 @@ def point_in_polygon(R,Z,R0,Z0):
       j = i
   return oddNodes
 
-
+def tanhCoulombPotential(R,Z,l1,l2,s1,s2):
+  assert(len(R)==len(Z))
+  assert(R[0]!=R[-1] and R[0]!=R[-1])
+  ntheta = len(R)
+  dR = np.roll(R,-1)-R
+  dZ = np.roll(Z,-1)-Z
+  dl = np.sqrt(dR**2 + dZ**2)
+  l = np.cumsum(dl)
+  effective_distance = np.zeros((ntheta,ntheta))
+  effective_distance_integrated = np.zeros(ntheta)
+  activation_length = np.zeros((ntheta,ntheta))
+  activation_function1 = np.zeros((ntheta,ntheta))
+  for itheta in range(ntheta):
+    for ithetap in range(ntheta):
+      if (ithetap != itheta):
+        activation_length[itheta,ithetap] = (l[itheta]-l[ithetap])
+        # Limit activation_legnth to -L/2, L/2
+        if activation_length[itheta,ithetap] > l[-1]/2:
+          activation_length[itheta,ithetap] = l[-1]-activation_length[itheta,ithetap]
+        if activation_length[itheta,ithetap] < -l[-1]/2:
+          activation_length[itheta,ithetap] = -l[-1]-activation_length[itheta,ithetap]
+        assert (activation_length[itheta,ithetap] <= l[-1]/2 and activation_length[itheta,ithetap] >= -l[-1]/2)
+        activation_function1[itheta,ithetap] = (1 + np.tanh(s1*(np.abs(activation_length[itheta,ithetap])-l1)))/2
+        assert(activation_function1[itheta,ithetap]>=0)
+        activation_distance = np.sqrt((R[itheta]-R[ithetap])**2 + (Z[itheta]-Z[ithetap])**2)
+        activation_function2 = (1 - np.tanh(s2*(activation_distance-l2)))/2
+        assert(activation_function2>=0)
+        effective_distance[itheta,ithetap] = activation_function1[itheta,ithetap]*activation_function2
+        assert(effective_distance[itheta,ithetap]>=0)
+    effective_distance_integrated[itheta] = np.dot(effective_distance[itheta,:],dl)
+  return effective_distance_integrated, effective_distance
+#, activation_length, activation_function1
+    
+      
 
 

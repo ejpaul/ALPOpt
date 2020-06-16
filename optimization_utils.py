@@ -199,7 +199,6 @@ class vmecOptimization:
       inputObject_new.ac_aux_f = list(It)
       inputObject_new.ac_aux_s = list(s_half)
       inputObject_new.pcurr_type = "line_segment_I"
-      print(It)
     if (pres is not None):
       s_half = self.vmecOutputObject.s_half
       if (self.vmecOutputObject.ns>101):
@@ -658,7 +657,11 @@ class vmecOptimization:
       inSurface = vmecInputObject.test_axis()
       if (not inSurface):
         print('Initial magnetic axis does not lie within requested boundary! Trying a modified axis shape.')
-        vmecInputObject.modify_axis()
+        return_value = vmecInputObject.modify_axis()
+        if (return_value == -1):
+          # print input namelist for the record
+          vmecInputObject.print_namelist()
+          error_code = -1 
                 
     # VMEC error codes (from vmec_params.f) :
     # norm_term_flag=0

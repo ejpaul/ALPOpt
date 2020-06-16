@@ -301,7 +301,6 @@ class readVmecInput:
     f.write("&INDATA\n")
     for item in namelist.keys():
       if namelist[item] is not None:
-        print(item)
         if (not isinstance(namelist[item],(list, tuple, np.ndarray,str))):
           f.write(item+"="+str(namelist[item])+"\n")
         elif (isinstance(namelist[item],str)):
@@ -393,7 +392,7 @@ class readVmecInput:
             break
     if (not inSurface):
       print('Unable to find suitable axis shape in modify_axis.')
-      sys.exit(0)
+      return -1
     
     # Now Fourier transform 
     raxis_cc = np.zeros(self.ntor)
@@ -405,6 +404,7 @@ class readVmecInput:
         zaxis_cs[n] = np.sum(Zaxis*np.sin(angle))/np.sum(np.sin(angle)**2)
     self.raxis = raxis_cc
     self.zaxis = zaxis_cs
+    return 1
         
   def radius_derivatives(self,xm_sensitivity,xn_sensitivity,theta=None,zeta=None):
     if (theta is None and zeta is None):

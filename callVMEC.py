@@ -71,8 +71,8 @@ class callVMEC_interface:
     
   def callVMEC(self,inputObject):
     input_filename = inputObject.input_filename
+    
     # Set desired input data
-    self.vmecObject.reinit()
     self.vmecObject.indata.raxis[0:len(inputObject.raxis)] = np.copy(inputObject.raxis)
     self.vmecObject.indata.zaxis[0:len(inputObject.zaxis)] = np.copy(inputObject.zaxis)
     if inputObject.curtor is not None:
@@ -81,29 +81,30 @@ class callVMEC_interface:
       self.vmecObject.indata.ac_aux_f[0:len(inputObject.ac_aux_f)] = np.copy(inputObject.ac_aux_f)
     if inputObject.ac_aux_s is not None:
       self.vmecObject.indata.ac_aux_s[0:len(inputObject.ac_aux_s)] = np.copy(inputObject.ac_aux_s)
-    self.vmecObject.indata.pcurr_type = inputObject.pcurr_type
+    if inputObject.pcurr_type is not None:
+      self.vmecObject.indata.pcurr_type = inputObject.pcurr_type
     if inputObject.am_aux_f is not None:
       self.vmecObject.indata.am_aux_f[0:len(inputObject.am_aux_f)] = np.copy(inputObject.am_aux_f)
     if inputObject.am_aux_s is not None:
       self.vmecObject.indata.am_aux_s[0:len(inputObject.am_aux_s)] = np.copy(inputObject.am_aux_s)
-    self.vmecObject.indata.pmass_type = inputObject.pmass_type
+    if inputObject.pmass_type is not None:
+      self.vmecObject.indata.pmass_type = inputObject.pmass_type
     self.vmecObject.indata.mpol = inputObject.mpol
     self.vmecObject.indata.ntor = inputObject.ntor
     self.vmecObject.indata.nfp = inputObject.nfp
     rbc = np.zeros(np.shape(self.vmecObject.indata.rbc))
     zbs = np.zeros(np.shape(self.vmecObject.indata.zbs))
     for imn in range(inputObject.mnmax):
-      if (inputObject.xm[imn]==0 and inputObject.xn[imn]==0):
-        print('r00: '+str(inputObject.rbc[imn]))
       if (inputObject.rbc[imn]!=0):
-        rbc[int(inputObject.xn[imn]),int(inputObject.xm[imn])] = inputObject.rbc[imn]
+        rbc[101+int(inputObject.xn[imn]),int(inputObject.xm[imn])] = inputObject.rbc[imn]
       if (inputObject.zbs[imn]!=0):
-        zbs[int(inputObject.xn[imn]),int(inputObject.xm[imn])] = inputObject.zbs[imn]
-    self.vmecObject.indata.rbc(rbc)
-    self.vmecObject.indata.zbs(zbs)
+        zbs[101+int(inputObject.xn[imn]),int(inputObject.xm[imn])] = inputObject.zbs[imn]
+    self.vmecObject.indata.rbc = np.copy(rbc)
+    self.vmecObject.indata.zbs = np.copy(zbs)
+    self.vmecObject.reinit()
     
     rank = self.comm.Get_rank()
-    self.vmecObject.run(iseq=rank)
+    self.vmecObject.run(iseq=rank,input_file=input_filename)
     return self.vmecObject.ictrl[1]
     
     

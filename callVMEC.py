@@ -104,7 +104,11 @@ class callVMEC_interface:
     self.vmecObject.reinit()
     
     rank = self.comm.Get_rank()
-    self.vmecObject.run(iseq=rank,input_file=input_filename)
+    if rank == 0:
+      verbose = self.verbose
+    else:
+      verbose = False
+    self.vmecObject.run(iseq=rank,input_file=input_filename,verbose=verbose)
     return self.vmecObject.ictrl[1]
     
     

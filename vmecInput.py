@@ -62,6 +62,7 @@ class readVmecInput:
     self.mpol = mpol
     self.ntor = ntor
     [self.mnmax,self.xm,self.xn] = optimization_utils.init_modes(self.mpol-1,self.ntor)
+    [self.rbc,self.zbs] = self.read_boundary_input()
     
   def update_grids(self,ntheta,nzeta):
     self.ntheta = ntheta
@@ -212,6 +213,7 @@ class readVmecInput:
     elif (np.array(theta).shape != np.array(zeta).shape):
       print('Incorrect shape of theta and zeta in position_first_derivatives')
       sys.exit(0)
+  
     R = np.zeros(np.shape(theta))
     Z = np.zeros(np.shape(zeta))
     for im in range(self.mnmax):
@@ -328,10 +330,26 @@ class readVmecInput:
   def axis_position(self):
     R0 = np.zeros(self.nzeta)
     Z0 = np.zeros(self.nzeta)
-    for im in range(len(self.raxis)):
+    
+    if isinstance(self.raxis,(np.ndarray,list)):
+      length = len(self.raxis)
+    else:
+      length = 1
+      self.raxis = [self.raxis]
+    for im in range(length):
       angle = -self.nfp*im*self.zetas
       R0 = R0 + self.raxis[im]*np.cos(angle)
+
+    if isinstance(self.zaxis,(np.ndarray,list)):
+      length = len(self.zaxis)
+    else:
+      length = 1
+      self.zaxis = [self.zaxis]
+
+    for im in range(length):
+      angle = -self.nfp*im*self.zetas
       Z0 = Z0 + self.zaxis[im]*np.sin(angle)
+ 
     return R0, Z0
   
   # Given (R,Z) defining boundary shape, determine if (R0,Z0) lies inside boundary

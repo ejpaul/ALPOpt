@@ -1,8 +1,8 @@
 import subprocess
 import sys
 import os
-from vmec_class import VMEC
-from mpi4py import MPI
+# from vmec_class import VMEC
+# from mpi4py import MPI
 import numpy as np
 # import vmec
 
@@ -25,7 +25,7 @@ class callVMEC_batch:
       sys.exit(1)
     
   # update sample_batch with new input_filename
-  def update_batch(self,input_filename,inputObject):
+  def update_batch(self,input_filename):
     f1 = open(self.directory+'/'+self.sample_batch,'r')
     f2 = open(self.sample_batch,'w')
     contains = False

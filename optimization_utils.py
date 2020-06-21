@@ -638,30 +638,40 @@ class vmecOptimization:
     if (vmecInputObject is None):
       vmecInputObject = self.vmecInputObject
     [X,Y,Z,R] = vmecInputObject.position()
+    if np.any(R<0):
+      return True
     # Iterate over cross-sections
     for izeta in range(self.nzeta):
       if (self_intersect(R[izeta,:],Z[izeta,:])):
-        return False
-    return True
+        return True
+    return False
   
   def call_vmec(self,vmecInputObject):
     if (vmecInputObject is None):
       vmecInputObject = copy.deepcopy(vmecInputObject)
-    orientable = self.test_jacobian(vmecInputObject)
-
-    if (not orientable):
-      print("Requested boundary has ill-conditioned Jacobian. Surface is likely self-intersecting. I will not call"\
-        "VMEC")
-      return 15
+    
+    intersecting = self.test_boundary(vmecInputObject)
+    if (intersecting):
+      # print input namelist for the record
+      vmecInputObject.print_namelist()
+      print("Requested boundary is self-intersecting. I will not call VMEC.")
+      return 16
     else:
-      inSurface = vmecInputObject.test_axis()
-      if (not inSurface):
-        print('Initial magnetic axis does not lie within requested boundary! Trying a modified axis shape.')
-        return_value = vmecInputObject.modify_axis()
-        if (return_value == -1):
-          # print input namelist for the record
-          vmecInputObject.print_namelist()
-          error_code = -1 
+      orientable = self.test_jacobian(vmecInputObject)
+      if (not orientable):
+        # print input namelist for the record
+        vmecInputObject.print_namelist()
+        print("Requested boundary has ill-conditioned Jacobian. I will not call VMEC.")
+        return 15
+      else:
+        inSurface = vmecInputObject.test_axis()
+        if (not inSurface):
+          print('Initial magnetic axis does not lie within requested boundary! Trying a modified axis shape.')
+          return_value = vmecInputObject.modify_axis()
+          if (return_value == -1):
+            # print input namelist for the record
+            vmecInputObject.print_namelist()
+            error_code = -1 
                 
     # VMEC error codes (from vmec_params.f) :
     # norm_term_flag=0
@@ -759,7 +769,7 @@ class vmecOptimization:
               print("Incorrect objective specified in optimization_plot!")
               sys.exit(1)
         else:
-          print("wout_filename not found in "+ dir+". Moving on to next directory Objective function will be set to zero.")
+          print("wout_filename not found in "+dir_list[i]+". Moving on to next directory Objective function will be set to zero.")
       os.chdir('..')
     return objective
   

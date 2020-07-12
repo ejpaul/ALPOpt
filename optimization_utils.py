@@ -1,7 +1,7 @@
 import numpy as np
 import os
-from vmecOutput import *
-from vmecInput import *
+from output import *
+from input import *
 import errno
 import subprocess
 import sys
@@ -82,7 +82,7 @@ class vmecOptimization:
         self.jacobian_threshold = 1e-4
         self.minCurvatureRadius = minCurvatureRadius
 
-        self.vmecInputObject = readVmecInput(vmecInputFilename,ntheta,nzeta)
+        self.vmecInputObject = VmecInput(vmecInputFilename,ntheta,nzeta)
         self.nfp = self.vmecInputObject.nfp
         mpol_input = self.vmecInputObject.mpol
         ntor_input = self.vmecInputObject.ntor
@@ -135,7 +135,7 @@ class vmecOptimization:
                 print('''Unable to evaluate base VMEC equilibrium in 
                     vmecOptimization constructor.''')
         if (woutFilename is not None):
-            self.vmecOutputObject = readVmecOutput(woutFilename,self.ntheta,
+            self.vmecOutputObject = VmecOutput(woutFilename,self.ntheta,
                                                    self.nzeta)  
       
     def evaluate_vmec(self,boundary=None,It=None,pres=None,update=True):
@@ -226,7 +226,7 @@ class vmecOptimization:
                 ds_spline = s_spline[1]-s_spline[0]
                 s_spline_half = s_spline - 0.5*ds_spline
                 s_spline_half = np.delete(s_spline_half,0)
-                pres_spline = 
+                pres_spline = \
                     interpolate.InterpolatedUnivariateSpline(s_half,pres)
                 pres = pres_spline(s_spline_half)
                 s_half = s_spline_half
@@ -244,7 +244,7 @@ class vmecOptimization:
             # Read from new equilibrium
             outputFileName = "wout_"+input_file[6::]+".nc"
             vmecOutput_new = \
-                readVmecOutput(outputFileName,self.ntheta,self.nzeta)
+                VmecOutput(outputFileName,self.ntheta,self.nzeta)
             if (boundary is not None and update):
                 self.vmecOutputObject = vmecOutput_new
                 self.vmec_evaluated = True
@@ -396,6 +396,8 @@ class vmecOptimization:
             print("Evaluating radius objective.")
         elif (which_objective=='normalized_jacobian'):
             print("Evaluating normalized jacobian objective.")
+        elif (which_objective=='modB'):
+            print("Evaluating modB objective.")
         else:
             print('''Error! evaluate_vmec called with incorrect value of 
                 which_objective''')
@@ -442,6 +444,8 @@ class vmecOptimization:
                 objective_function = R
             elif (which_objective == 'normalized_jacobian'):
                 objective_function = vmecOutputObject.normalized_jacobian(-1)
+            elif (which_objective == 'modB'):
+                objective_function = vmecOutputObject.evaluate_modB_objective()
             return objective_function
         else:
             return 1e12
@@ -502,7 +506,7 @@ class vmecOptimization:
                     perturbation in vmec_shaep_gradient.''')
                 sys.exit(1)
 
-            [Bx_delta, By_delta, Bz_delta, theta_arclength_delta] = 
+            [Bx_delta, By_delta, Bz_delta, theta_arclength_delta] = \
                 vmecOutput_delta.B_on_arclength_grid()
             for izeta in range(self.vmecOutputObject.nzeta):
                 f = interpolate.InterpolatedUnivariateSpline(\
@@ -619,7 +623,7 @@ class vmecOptimization:
             [dfdrmnc,dfdzmns] = vmecInputObject.radius_derivatives(\
                                         self.xm_sensitivity,self.xn_sensitivity)
         elif (which_objective == 'normalized_jacobian'):
-            [dfdrmnc,dfdzmns] = 
+            [dfdrmnc,dfdzmns] = \
                 vmecInputObject.normalized_jacobian_derivatives(\
                                         self.xm_sensitivity,self.xn_sensitivity)
         elif (which_objective == 'area'):
@@ -815,7 +819,7 @@ class vmecOptimization:
             os.chdir(dir_list[i])
             if (objective_type == 'input'):
                 input_filename = 'input.'+dir_list[i]
-                readInputObject = readVmecInput(input_filename,self.ntheta,\
+                readInputObject = VmecInput(input_filename,self.ntheta,\
                                                 self.nzeta)
                 if (which_objective=='volume'):
                     objective[i] = readInputObject.volume()
@@ -846,7 +850,7 @@ class vmecOptimization:
                               ". Moving on to next directory. \
                               Objective function will be set to zero.")
                     else:
-                        readVmecObject = readVmecOutput('wout_'+dir_list[i]+\
+                        readVmecObject = VmecOutput('wout_'+dir_list[i]+\
                                                    '.nc',self.ntheta,self.nzeta)
                         if (which_objective=='iota'):
                             objective[i] = \
@@ -943,10 +947,10 @@ def segment_intersect(p1,p2,p3,p4):
     b3 = [min(p3[0],p4[0]),min(p3[1],p4[1])]
     b4 = [max(p3[0],p4[0]),max(p3[1],p4[1])]
   
-    boundingBoxIntersect = (b1[0] <= b4[0]) and (b2[0] >= b3[0]) \ 
-        and (b1[1] <= b4[1]) and (b2[1] >= b3[1])
-    return ((l1[0]*l2[1]-l1[1]*l2[0])*(l3[0]*l2[1]-l3[1]*l2[0]) < 0) and \ 
-        boundingBoxIntersect
+    boundingBoxIntersect = ((b1[0] <= b4[0]) and (b2[0] >= b3[0])  \
+                            and (b1[1] <= b4[1]) and (b2[1] >= b3[1]))
+    return (((l1[0]*l2[1]-l1[1]*l2[0])*(l3[0]*l2[1]-l3[1]*l2[0]) < 0) and 
+        boundingBoxIntersect)
 
 def self_intersect(x,y):
     assert(isinstance(x,(list,np.ndarray)))

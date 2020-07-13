@@ -226,7 +226,7 @@ class vmecOptimization:
                 ds_spline = s_spline[1]-s_spline[0]
                 s_spline_half = s_spline - 0.5*ds_spline
                 s_spline_half = np.delete(s_spline_half,0)
-                pres_spline = 
+                pres_spline = \
                     interpolate.InterpolatedUnivariateSpline(s_half,pres)
                 pres = pres_spline(s_spline_half)
                 s_half = s_spline_half
@@ -502,7 +502,7 @@ class vmecOptimization:
                     perturbation in vmec_shaep_gradient.''')
                 sys.exit(1)
 
-            [Bx_delta, By_delta, Bz_delta, theta_arclength_delta] = 
+            [Bx_delta, By_delta, Bz_delta, theta_arclength_delta] = \
                 vmecOutput_delta.B_on_arclength_grid()
             for izeta in range(self.vmecOutputObject.nzeta):
                 f = interpolate.InterpolatedUnivariateSpline(\
@@ -619,7 +619,7 @@ class vmecOptimization:
             [dfdrmnc,dfdzmns] = vmecInputObject.radius_derivatives(\
                                         self.xm_sensitivity,self.xn_sensitivity)
         elif (which_objective == 'normalized_jacobian'):
-            [dfdrmnc,dfdzmns] = 
+            [dfdrmnc,dfdzmns] = \
                 vmecInputObject.normalized_jacobian_derivatives(\
                                         self.xm_sensitivity,self.xn_sensitivity)
         elif (which_objective == 'area'):
@@ -943,10 +943,10 @@ def segment_intersect(p1,p2,p3,p4):
     b3 = [min(p3[0],p4[0]),min(p3[1],p4[1])]
     b4 = [max(p3[0],p4[0]),max(p3[1],p4[1])]
   
-    boundingBoxIntersect = (b1[0] <= b4[0]) and (b2[0] >= b3[0]) \ 
-        and (b1[1] <= b4[1]) and (b2[1] >= b3[1])
-    return ((l1[0]*l2[1]-l1[1]*l2[0])*(l3[0]*l2[1]-l3[1]*l2[0]) < 0) and \ 
-        boundingBoxIntersect
+    boundingBoxIntersect = ((b1[0] <= b4[0]) and (b2[0] >= b3[0]) 
+        and (b1[1] <= b4[1]) and (b2[1] >= b3[1]))
+    return (((l1[0]*l2[1]-l1[1]*l2[0])*(l3[0]*l2[1]-l3[1]*l2[0]) < 0) and 
+        boundingBoxIntersect)
 
 def self_intersect(x,y):
     assert(isinstance(x,(list,np.ndarray)))

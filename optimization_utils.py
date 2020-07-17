@@ -1,7 +1,7 @@
 import numpy as np
 import os
-from vmecOutput import *
-from vmecInput import *
+from simsopt.modules.vmec.output import VmecOutput
+from simsopt.modules.vmec.input import VmecInput
 import errno
 import subprocess
 import sys
@@ -12,6 +12,7 @@ from scipy import optimize
 from matplotlib import pyplot as plt
 import scipy
 import copy
+from scipy.io import netcdf
 
 """
 Required packages: nlopt, f90nml, scanf
@@ -82,7 +83,7 @@ class vmecOptimization:
         self.jacobian_threshold = 1e-4
         self.minCurvatureRadius = minCurvatureRadius
 
-        self.vmecInputObject = readVmecInput(vmecInputFilename,ntheta,nzeta)
+        self.vmecInputObject = VmecInput(vmecInputFilename,ntheta,nzeta)
         self.nfp = self.vmecInputObject.nfp
         mpol_input = self.vmecInputObject.mpol
         ntor_input = self.vmecInputObject.ntor
@@ -135,7 +136,7 @@ class vmecOptimization:
                 print('''Unable to evaluate base VMEC equilibrium in 
                     vmecOptimization constructor.''')
         if (woutFilename is not None):
-            self.vmecOutputObject = readVmecOutput(woutFilename,self.ntheta,
+            self.vmecOutputObject = VmecOutput(woutFilename,self.ntheta,
                                                    self.nzeta)  
       
     def evaluate_vmec(self,boundary=None,It=None,pres=None,update=True):
@@ -244,7 +245,7 @@ class vmecOptimization:
             # Read from new equilibrium
             outputFileName = "wout_"+input_file[6::]+".nc"
             vmecOutput_new = \
-                readVmecOutput(outputFileName,self.ntheta,self.nzeta)
+                VmecOutput(outputFileName,self.ntheta,self.nzeta)
             if (boundary is not None and update):
                 self.vmecOutputObject = vmecOutput_new
                 self.vmec_evaluated = True
@@ -396,6 +397,8 @@ class vmecOptimization:
             print("Evaluating radius objective.")
         elif (which_objective=='normalized_jacobian'):
             print("Evaluating normalized jacobian objective.")
+        elif (which_objective=='modB_vol'):
+            print("evaluating modB_vol objective.")
         else:
             print('''Error! evaluate_vmec called with incorrect value of 
                 which_objective''')
@@ -442,6 +445,8 @@ class vmecOptimization:
                 objective_function = R
             elif (which_objective == 'normalized_jacobian'):
                 objective_function = vmecOutputObject.normalized_jacobian(-1)
+            elif (which_objective == 'modB_vol'):
+                objective_function = vmecOutputObject.evaluate_modB_objective_volume()
             return objective_function
         else:
             return 1e12
@@ -473,6 +478,8 @@ class vmecOptimization:
             return np.ones(np.shape(self.vmecOutputObject.zetas_2d))
         elif (which_objective=='area'):
             print("Evaluating area shape gradient.")
+        elif (which_objective=='modB_vol'):
+            print("Evaluating modB_vol shape gradient.")
         else:
             print("Error! vmec_shape_gradient called with incorrect value of"+\
                   which_objective)
@@ -552,6 +559,9 @@ class vmecOptimization:
         elif (which_objective == 'area'):
             shape_gradient = \
                 vmecOutputObject.mean_curvature(vmecOutputObject.ns-1)   
+        elif (which_objective == 'modB_vol'):
+            modB = vmecOutputObject.compute_modB(isurf=vmecOutputObject.ns, full=True)
+            shape_gradient = 0.5 * modB * modB
       
         return shape_gradient
   
@@ -663,6 +673,8 @@ class vmecOptimization:
             print("Evaluating radius objective gradient.")
         elif (which_objective=='normalized_jacobian'):
             print("Evaluating normalized_jacobian gradient.")
+        elif (which_objective=='modB_vol'):
+            print("Evaluating modB_vol objective gradient.")
         else:
             print('''Error! evaluate_vmec_objective_grad called with incorrect \
                 value of which_objective.''')
@@ -815,7 +827,7 @@ class vmecOptimization:
             os.chdir(dir_list[i])
             if (objective_type == 'input'):
                 input_filename = 'input.'+dir_list[i]
-                readInputObject = readVmecInput(input_filename,self.ntheta,\
+                readInputObject = VmecInput(input_filename,self.ntheta,\
                                                 self.nzeta)
                 if (which_objective=='volume'):
                     objective[i] = readInputObject.volume()
@@ -846,7 +858,7 @@ class vmecOptimization:
                               ". Moving on to next directory. \
                               Objective function will be set to zero.")
                     else:
-                        readVmecObject = readVmecOutput('wout_'+dir_list[i]+\
+                        readVmecObject = VmecOutput('wout_'+dir_list[i]+\
                                                    '.nc',self.ntheta,self.nzeta)
                         if (which_objective=='iota'):
                             objective[i] = \

@@ -4,6 +4,8 @@ import os
 # from vmec_class import VMEC
 # from mpi4py import MPI
 import numpy as np
+from scipy.io import netcdf
+
 # import vmec
 
 run_modes =  {'all': 63,

@@ -1,12 +1,7 @@
 import numpy as np
 import os
-<<<<<<< HEAD
-from output import *
-from input import *
-=======
 from simsopt.modules.vmec.output import VmecOutput
 from simsopt.modules.vmec.input import VmecInput
->>>>>>> 6b4207a0ca913a46064a41363b115b5c474c71b7
 import errno
 import subprocess
 import sys
@@ -402,13 +397,10 @@ class vmecOptimization:
             print("Evaluating radius objective.")
         elif (which_objective=='normalized_jacobian'):
             print("Evaluating normalized jacobian objective.")
-<<<<<<< HEAD
         elif (which_objective=='modB'):
             print("Evaluating modB objective.")
-=======
         elif (which_objective=='modB_vol'):
             print("evaluating modB_vol objective.")
->>>>>>> 6b4207a0ca913a46064a41363b115b5c474c71b7
         else:
             print('''Error! evaluate_vmec called with incorrect value of 
                 which_objective''')
@@ -455,13 +447,10 @@ class vmecOptimization:
                 objective_function = R
             elif (which_objective == 'normalized_jacobian'):
                 objective_function = vmecOutputObject.normalized_jacobian(-1)
-<<<<<<< HEAD
             elif (which_objective == 'modB'):
                 objective_function = vmecOutputObject.evaluate_modB_objective()
-=======
             elif (which_objective == 'modB_vol'):
                 objective_function = vmecOutputObject.evaluate_modB_objective_volume()
->>>>>>> 6b4207a0ca913a46064a41363b115b5c474c71b7
             return objective_function
         else:
             return 1e12
@@ -970,13 +959,8 @@ def segment_intersect(p1,p2,p3,p4):
     b3 = [min(p3[0],p4[0]),min(p3[1],p4[1])]
     b4 = [max(p3[0],p4[0]),max(p3[1],p4[1])]
   
-<<<<<<< HEAD
-    boundingBoxIntersect = ((b1[0] <= b4[0]) and (b2[0] >= b3[0])  \
-                            and (b1[1] <= b4[1]) and (b2[1] >= b3[1]))
-=======
     boundingBoxIntersect = ((b1[0] <= b4[0]) and (b2[0] >= b3[0]) 
         and (b1[1] <= b4[1]) and (b2[1] >= b3[1]))
->>>>>>> 6b4207a0ca913a46064a41363b115b5c474c71b7
     return (((l1[0]*l2[1]-l1[1]*l2[0])*(l3[0]*l2[1]-l3[1]*l2[0]) < 0) and 
         boundingBoxIntersect)
 

@@ -15,7 +15,7 @@ class GradOptimizer:
         if (nparameters <= 0):
             raise ValueError('nparameters must be > 0')
         if (isinstance(name,str) == False):
-            raise TypeError('name must be an str')
+            raise TypeError('name must be an str')  
             
         self.nparameters = nparameters
         self.name = name
@@ -45,8 +45,9 @@ class GradOptimizer:
         self.objectives_grad_norm_hist = []
         self.neval_objectives = 0
         self.neval_objectives_grad = 0 
-        self.ineq_constraints_hist = []
-        self.ineq_constraints_grad_norm_hist = []
+        
+        self.ineq_constraints_hist = np.zeros([])
+        self.ineq_constraints_grad_norm_hist = np.zeros([])
         self.neval_ineq_constraints = 0
         self.neval_ineq_constraints_grad = 0
         self.eq_constraints_hist = []
@@ -218,8 +219,8 @@ class GradOptimizer:
         self.objectives_grad_norm_hist = []
         self.neval_objectives = 0
         self.neval_objectives_grad = 0 
-        self.ineq_constraints_hist = []
-        self.ineq_constraints_grad_norm_hist = []
+        self.ineq_constraints_hist = np.zeros([])
+        self.ineq_constraints_grad_norm_hist = np.zeros([])
         self.neval_ineq_constraints = 0
         self.neval_ineq_constraints_grad = 0
         self.eq_constraints_hist = []
@@ -311,6 +312,68 @@ class GradOptimizer:
         self.neval_objectives_grad += 1
         return objective_grad
     
+    def ineq_fun(self,x):
+        """
+        Calls inequality constraint function 
+            g_i(x) >= 0
+        
+        Args:
+            x (list/array): parameters at which to evaluate inequality function.
+                Should have length = nparameters
+        Returns: 
+            ineq_value (list): value of inequality constraint functions
+        """
+        self._test_x(x)
+        # Check that no new constraints have been added since previous calls
+        if (self.ineq_constraints_hist.ndim == 2):
+            if (len(self.ineq_constraints_hist[0,:]) != self.n_ineq_constraints):
+                raise RuntimeError('''Number of constraints has been increased 
+                                   since previous call to ineq_fun''')
+        ineq_values = np.zeros(self.n_ineq_constraints)
+        for i in range(self.n_ineq_constraints):
+            ineq_values[i] = self.ineq_constraints[i](x)
+        if (self.neval_ineq_constraints == 0):
+            self.ineq_constraints_hist = np.zeros((1,self.n_ineq_constraints))
+            self.ineq_constraints_hist[0,:] = ineq_values
+        else:
+            self.ineq_constraints_hist = \
+                            np.vstack((np.array(self.ineq_constraints_hist),\
+                                                ineq_values))
+        self.neval_ineq_constraints += 1
+        return ineq_values
+    
+    def ineq_grad_fun(self,x):
+        """
+        Computes gradient of inequality constraint function 
+            g'(x)
+        
+        Args:
+            x (list/array): parameters at which to evaluate inequality gradient.
+                Should have length nparameters.
+        Returns: 
+            ineq_gradient (array): value of inequality gradient function.
+                Has shape (nparameters,n_ineq_constraints)
+        """
+        self._test_x(x)
+        # Check that no new constraints have been added since previous calls
+        if (self.ineq_constraints_grad_norm_hist.ndim == 2):
+            if (len(self.ineq_constraints_grad_norm_hist[0,:]) != \
+                self.n_ineq_constraints):
+                raise RuntimeError('''Number of constraints has been increased 
+                                   since previous call to ineq_grad_fun''')
+        ineq_grad = np.zeros([self.nparameters,self.n_ineq_constraints])
+        for i in range(self.n_ineq_constraints):
+            ineq_grad[:,i] = self.ineq_constraints_grad[i](x)
+        if (self.neval_ineq_constraints_grad == 0):
+            self.ineq_constraints_grad_norm_hist = np.zeros((1,self.n_ineq_constraints))
+            self.ineq_constraints_grad_norm_hist[0,:] = scipy.linalg.norm(ineq_grad)
+        else:
+            self.ineq_constraints_grad_norm_hist = \
+                     np.vstack((np.array(self.ineq_constraints_grad_norm_hist),\
+                                                ineq_grad))
+        self.neval_ineq_constraints_grad += 1
+        return ineq_grad.T
+    
     def optimize(self,x,package='nlopt',method='CCSAQ',ftol_abs=1e-4,
                  ftol_rel=1e-4,xtol_abs=1e-4,xtol_rel=1e-4,tol=1e-4):
         """
@@ -365,9 +428,12 @@ class GradOptimizer:
         Returns:
             objective_value (float): value of objective function 
         """
-        if grad.size > 0:
-            grad[:] = self.objectives_grad_fun(x)
         objective_value = self.objectives_fun(x)
+        if grad.size > 0:
+            if (objective_value != 1e12):
+                grad[:] = self.objectives_grad_fun(x)
+            else:
+                grad[:] = np.zeros(self.nparameters)
         return objective_value
     
     def nlopt_ineq_m(self, result, x, grad):
@@ -384,10 +450,12 @@ class GradOptimizer:
                 is n_ineq_constraints. Second dimension is nparameters. Should be 
                 set in place if not empty.
         """
-        for i in range(self.n_ineq_constraints):
-            result[i] = -self.ineq_constraints[i](x)
-            if grad.size > 0:
-                grad[i,:] = -np.array(self.ineq_constraints_grad[i](x))
+        result[:] = -self.ineq_fun(x)
+        if grad.size > 0:
+            if (np.all(result!=1e12)):
+                grad[:,:] = -self.ineq_grad_fun(x)
+            else:
+                grad[:,:] = np.zeros([self.n_ineq_constraints,self.nparameters])
             
     def nlopt_ineq(self, x, grad):
         """
@@ -406,9 +474,12 @@ class GradOptimizer:
         if (self.n_ineq_constraints > 1):
             raise RuntimeErrr('''nlopt_ineq should only be called if 
                 n_ineq_constraints = 1''')
+        ineq_value = -self.ineq_fun(x)[0]
         if grad.size > 0:
-            grad[:] = -self.ineq_constraints_grad[0](x)
-        ineq_value = -self.ineq_constraints[0](x)
+            if (ineq_value != 1e12):
+                grad[:] = -self.ineq_grad_fun(x)[0,:]
+            else:
+                grad[:] = np.zeros(self.nparameters)
         return ineq_value
     
     def nlopt_eq(self, x, grad):
@@ -427,9 +498,12 @@ class GradOptimizer:
         if (self.n_eq_constraints > 1):
             raise RuntimeErrr('''nlopt_eq should only be called if 
                 n_eq_constraints = 1''')
-        if grad.size > 0:
-            grad[:] = self.eq_constraints_grad[0](x)
         eq_value = self.eq_constraints[0](x)
+        if grad.size > 0:
+            if (eq_value != 1e12):
+                grad[:] = self.eq_constraints_grad[0](x)
+            else:
+                grad[:] = np.zeros(self.nparameters)
         return eq_value
     
     def nlopt_eq_m(self, result, x, grad):
@@ -448,7 +522,11 @@ class GradOptimizer:
         for i in range(self.n_eq_constraints):
             result[i] = self.eq_constraints[i](x)
             if grad.size > 0:
-                grad[i,:] = np.array(self.eq_constraints_grad[i](x))
+                if (np.all(result != 1e12)):
+                    grad[i,:] = np.array(self.eq_constraints_grad[i](x))
+                else:
+                    grad[:,:] = np.zeros([self.n_eq_constraints,self.nparameters])
+
 
     def nlopt_optimize(self,x,method='SLSQP',ftol_abs=1e-8,ftol_rel=1e-8,\
                        xtol_abs=1e-8,xtol_rel=1e-8,ineq_tol=1e-8,eq_tol=1e-8):
@@ -529,12 +607,12 @@ class GradOptimizer:
             opt.set_lower_bounds(self.bound_constraints_min)
         if (len(self.bound_constraints_max)>0):
             opt.set_upper_bounds(self.bound_constraints_max)
-        try: 
-            xopt = opt.optimize(x)
-        except:
-            print('Nlopt completed with an error')
-            # Take x from history
-            xopt = self.parameters_hist[-1,:]
+#         try: 
+        xopt = opt.optimize(x)
+#         except:
+#             print('Nlopt completed with an error')
+#             # Take x from history
+        xopt = self.parameters_hist[-1,:]
         fopt = opt.last_optimum_value()
         result = opt.last_optimize_result()
         return xopt, fopt, result
@@ -575,15 +653,12 @@ class GradOptimizer:
         if (self.ineq_constrained):
             ineq_constraints = []
             if (method == 'trust-constr'):
-                for i in range(self.n_ineq_constraints):
-                    ineq_constraints.append(scipy.optimize.NonlinearConstraint(\
-                                          self.ineq_constraints[i],0,np.infty,\
-                                          jac = self.ineq_constraints_grad[i]))
+                ineq_constraints.append(scipy.optimize.NonlinearConstraint(\
+                               self.ineq_fun,0,np.infty,jac=self.ineq_grad_fun))
             else:
-                for i in range(self.n_ineq_constraints):
-                    ineq_constraints.append({'type' : 'ineq', \
-                                           'fun': self.ineq_constraints[i], \
-                                           'jac': self.ineq_constraints_grad[i]})
+                ineq_constraints.append({'type' : 'ineq','fun':self.ineq_fun,\
+                                        'jac': self.ineq_grad_fun})
+
         if (self.eq_constrained):
             eq_constraints = []
             if (method == 'trust-constr'):

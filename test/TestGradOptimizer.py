@@ -151,6 +151,60 @@ class Test(unittest.TestCase):
         self.assertEqual(len(self.gradOptimizer.objectives_grad_norm_hist),2)
         self.assertTrue(np.all(grad2 == grad))
         
+    def test_ineq_fun(self):
+        self.assertRaises(ValueError,self.gradOptimizer.ineq_fun,\
+                          [1 for i in range(11)])
+        self.gradOptimizer.reset_all()
+        # Add inequality constraint
+        self.gradOptimizer.add_ineq(lambda x : np.sum(np.array(x) ** 3), \
+                                         lambda x : 3 * np.array(x) **2)        
+        ineq_value = self.gradOptimizer.ineq_fun([0 for i in range(10)])
+        self.assertTrue(isinstance(ineq_value,np.ndarray))
+        self.assertEqual(self.gradOptimizer.neval_ineq_constraints,1)
+        self.assertEqual(len(self.gradOptimizer.ineq_constraints_hist[:,0]),\
+                         self.gradOptimizer.neval_ineq_constraints)
+        
+        self.assertEqual(len(self.gradOptimizer.ineq_constraints_hist[0,:]),\
+                         self.gradOptimizer.n_ineq_constraints)
+        self.assertEqual(self.gradOptimizer.ineq_constraints_hist[0,:],\
+                        ineq_value)
+
+        # Call again
+        ineq_value = self.gradOptimizer.ineq_fun([1 for i in range(10)])
+        self.assertEqual(self.gradOptimizer.neval_ineq_constraints,2)
+        self.assertEqual(len(self.gradOptimizer.ineq_constraints_hist[:,0]),\
+                         self.gradOptimizer.neval_ineq_constraints)
+        self.assertEqual(len(self.gradOptimizer.ineq_constraints_hist[0,:]),\
+                         self.gradOptimizer.n_ineq_constraints)
+        self.assertEqual(len(self.gradOptimizer.ineq_constraints_hist),2)
+        self.assertEqual(self.gradOptimizer.ineq_constraints_hist[1,:],\
+                         ineq_value)
+        # Add constraint and check that RuntimeError is raised
+        self.gradOptimizer.add_ineq(lambda x : np.sum(np.array(x) ** 2), \
+                                         lambda x : 2 * np.array(x))
+        self.assertRaises(RuntimeError,\
+                          self.gradOptimizer.ineq_fun,[0 for i in range(10)])
+        self.gradOptimizer.reset_all()
+        
+    def test_ineq_grad_fun(self):
+        self.assertRaises(ValueError,self.gradOptimizer.ineq_grad_fun,\
+                          [1 for i in range(11)])
+        self.gradOptimizer.reset_all()
+        # Add inequality constraint
+        self.gradOptimizer.add_ineq(lambda x : np.sum(np.array(x) ** 3), \
+                                         lambda x : 3 * np.array(x) **2)        
+        ineq_grad = self.gradOptimizer.ineq_grad_fun([0 for i in range(10)])
+        self.assertTrue(isinstance(ineq_grad,np.ndarray))
+        self.assertEqual(self.gradOptimizer.neval_ineq_constraints_grad,1)
+        self.assertEqual(len(self.gradOptimizer.ineq_constraints_grad_norm_hist[:,0]),\
+                         self.gradOptimizer.neval_ineq_constraints_grad)
+        
+        self.assertEqual(len(self.gradOptimizer.ineq_constraints_grad_norm_hist[0,:]),\
+                         self.gradOptimizer.n_ineq_constraints)
+        self.assertEqual(self.gradOptimizer.ineq_constraints_grad_norm_hist[0,:],\
+                        scipy.linalg.norm(ineq_grad))
+
+        
     def test_optimize(self):
         self.assertRaises(ValueError,self.gradOptimizer.optimize,\
                           [1 for i in range(11)])

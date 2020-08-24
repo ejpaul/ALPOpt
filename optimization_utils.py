@@ -280,10 +280,9 @@ class vmecOptimization:
                 rmnc_new[cond] = rmnc_opt_new[imn]
                 zmns_new[cond] = zmns_opt_new[imn]
         self.boundary = np.hstack((rmnc_new,zmns_new))
-        return
   
     def evaluate_input_objective(self,boundary=None,which_objective='volume',\
-                                 update=True):
+                                 update=True,ntheta=None,nzeta=None):
         if (which_objective=='volume'):
             print("Evaluating volume objective.")
         elif (which_objective=='area'):
@@ -358,12 +357,9 @@ class vmecOptimization:
             objective_function = R
         elif (which_objective == 'normalized_jacobian'):
             objective_function = vmecInputObject.normalized_jacobian()
-        elif (which_objective == 'proximity'):
-            objective_function = vmecInputObject.proximity(\
-                                 min_curvature_radius=self.minCurvatureRadius)
         elif (which_objective == 'summed_proximity'):
-            objective_function = vmecInputObject.summed_proximity(\
-                                 min_curvature_radius=self.minCurvatureRadius)
+            objective_function = vmecInputObject.summed_proximity(ntheta=ntheta,\
+                                                                  nzeta=nzeta)
         return objective_function
   
     # Call VMEC with boundary specified by boundaryObjective to evaluate which_objective
@@ -570,7 +566,8 @@ class vmecOptimization:
         return shape_gradient
   
     def evaluate_input_objective_grad(self,boundary=None,\
-                                      which_objective='volume',update=True):
+                                      which_objective='volume',update=True,\
+                                      ntheta=None,nzeta=None):
         if (which_objective=='volume'):
             print("Evaluating volume objective gradient.")
         elif (which_objective=='area'):
@@ -581,8 +578,6 @@ class vmecOptimization:
             print("Evaluating radius objective gradient.")
         elif (which_objective=='normalized_jacobian'):
             print("Evaluating normalized_jacobian objective gradient.")
-        elif (which_objective=='proximity'):
-            print("Evaluating proximity objective gradient.")
         elif (which_objective=='summed_proximity'):
             print("Evaluating summed proximity objective gradient.")
         else:
@@ -642,14 +637,10 @@ class vmecOptimization:
         elif (which_objective == 'volume'):
             [dfdrmnc,dfdzmns] = vmecInputObject.volume_derivatives(\
                                         self.xm_sensitivity,self.xn_sensitivity)
-        elif (which_objective == 'proximity'):
-            [dfdrmnc,dfdzmns] = vmecInputObject.proximity_derivatives(\
-                                        self.xm_sensitivity,self.xn_sensitivity,\
-                min_curvature_radius=self.minCurvatureRadius)
         elif (which_objective == 'summed_proximity'):
             [dfdrmnc,dfdzmns] = vmecInputObject.summed_proximity_derivatives(\
                                         self.xm_sensitivity,self.xn_sensitivity,\
-                min_curvature_radius=self.minCurvatureRadius)
+                                        ntheta=ntheta,nzeta=nzeta)
 
         if (dfdrmnc.ndim==1):
             gradient = np.hstack((dfdrmnc,dfdzmns[1::]))

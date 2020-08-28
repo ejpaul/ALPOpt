@@ -364,7 +364,8 @@ class vmecOptimization:
   
     # Call VMEC with boundary specified by boundaryObjective to evaluate which_objective
     def evaluate_vmec_objective(self,boundary=None,which_objective='iota',
-                                weight_function=axis_weight,update=True):
+                                weight_function=axis_weight,update=True,\
+                                iota_target=None):
         """
         Evaluates vmec objective function with prescribed boundary
 
@@ -383,6 +384,8 @@ class vmecOptimization:
             print("Evaluating iota objective.")
         elif (which_objective=='iota_prime'):
             print("Evaluating iota_prime objective.")
+        elif (which_objective=='iota_target'):
+            print("Evaluating iota_target objective.")
         elif (which_objective=='well'):
             print("Evaluating well objective.")
         elif (which_objective=='volume'):
@@ -430,6 +433,11 @@ class vmecOptimization:
             if (which_objective == 'iota'):
                 objective_function = \
                     vmecOutputObject.evaluate_iota_objective(weight_function)
+            elif (which_objective == 'iota_target'):
+                if (iota_target is None):
+                    iota_target = np.zeros(np.shape(self.vmecOutputObject.s_half))
+                objective_function = \
+                    vmecOutputObject.evaluate_iota_target_objective(weight_function,iota_target)
             elif (which_objective == 'iota_prime'):
                 objective_function = \
                     vmecOutputObject.evaluate_iota_prime_objective(weight_function)                
@@ -457,7 +465,8 @@ class vmecOptimization:
             return 1e12
               
     def vmec_shape_gradient(self,boundary=None,which_objective='iota',\
-                            weight_function=axis_weight,update=True):
+                            weight_function=axis_weight,update=True,\
+                            iota_target=None):
         """
         Evaluates shape gradient for objective function 
 
@@ -475,8 +484,11 @@ class vmecOptimization:
         if (which_objective=='iota'):
             print("Evaluating iota objective shape gradient.")
             delta = self.delta_curr
-        if (which_objective=='iota_prime'):
+        elif (which_objective=='iota_prime'):
             print("Evaluating iota_prime objective shape gradient.")
+            delta = self.delta_curr
+        elif (which_objective=='iota_target'):
+            print("Evaluating iota_target objective shape gradient.")
             delta = self.delta_curr
         elif (which_objective=='well'):
             print("Evaluating well objective shape gradient.")
@@ -533,9 +545,46 @@ class vmecOptimization:
             deltaB_dot_B = ((Bx_delta-Bx)*Bx + (By_delta-By)*By + \
                             (Bz_delta-Bz)*Bz)/delta
 
+            shape_gradient = deltaB_dot_B/(2*np.pi*self.vmecOutputObject.mu0)   
+        elif (which_objective == 'iota_target'):
+            [Bx, By, Bz, theta_arclength] = \
+                vmecOutputObject.B_on_arclength_grid()
+            It_half = vmecOutputObject.compute_current()
+            
+            weight_half = weight_function(self.vmecOutputObject.s_half)
+            iota = self.vmecOutputObject.iota
+            if (iota_target is None):
+                iota_target = np.zeros(np.shape(self.vmecOutputObject.s_half))
+            
+            perturbation = weight_half*(iota-iota_target)
+            
+            It_new = It_half + delta*perturbation
+
+            [error_code, vmecOutput_delta] = self.evaluate_vmec(It=It_new)
+            if (error_code != 0):
+                print('''Unable to evaluate VMEC equilibrium with current 
+                    perturbation in vmec_shaep_gradient.''')
+                sys.exit(1)
+
+            [Bx_delta, By_delta, Bz_delta, theta_arclength_delta] = \
+                vmecOutput_delta.B_on_arclength_grid()
+            for izeta in range(self.vmecOutputObject.nzeta):
+                f = interpolate.InterpolatedUnivariateSpline(\
+                            theta_arclength_delta[izeta,:],Bx_delta[izeta,:])
+                Bx_delta[izeta,:] = f(theta_arclength[izeta,:])
+                f = interpolate.InterpolatedUnivariateSpline(\
+                            theta_arclength_delta[izeta,:],By_delta[izeta,:])
+                By_delta[izeta,:] = f(theta_arclength[izeta,:])
+                f = interpolate.InterpolatedUnivariateSpline(\
+                            theta_arclength_delta[izeta,:],Bz_delta[izeta,:])
+                Bz_delta[izeta,:] = f(theta_arclength[izeta,:])
+
+            deltaB_dot_B = ((Bx_delta-Bx)*Bx + (By_delta-By)*By + \
+                            (Bz_delta-Bz)*Bz)/delta
+
             shape_gradient = deltaB_dot_B/(2*np.pi*self.vmecOutputObject.mu0)
             
-        if (which_objective == 'iota_prime'):
+        elif (which_objective == 'iota_prime'):
             [Bx, By, Bz, theta_arclength] = \
                 vmecOutputObject.B_on_arclength_grid()
             It_half = vmecOutputObject.compute_current()
@@ -556,10 +605,10 @@ class vmecOptimization:
             iota_prime_full[-1] = 1.5*self.vmecOutputObject.iota[-1] \
                             -0.5*self.vmecOutputObject.iota[-2]
             # Second derivative on half grid
-            iota_prime_prime_half = (iota_prime_full[1::]-iota_prime_full[0:-1])\ 
+            iota_prime_prime_half = (iota_prime_full[1::]-iota_prime_full[0:-1])\
                                     /self.vmecOutputObject.ds
             
-            perturbation = -(iota_prime_prime_half*weight_half \ 
+            perturbation = -(iota_prime_prime_half*weight_half \
                             + iota_prime_half*weight_prime)
             
             It_new = It_half + delta*perturbation
@@ -714,11 +763,14 @@ class vmecOptimization:
     # which_objective and compute gradient
     # If boundary is not specified, boundary will not be updated
     def evaluate_vmec_objective_grad(self,boundary=None,which_objective='iota',\
-                                     weight_function=axis_weight,update=True):
+                                     weight_function=axis_weight,update=True,\
+                                     iota_target=None):
         if (which_objective=='iota'):
             print("Evaluating iota objective gradient.")
-        if (which_objective=='iota_prime'):
+        elif (which_objective=='iota_prime'):
             print("Evaluating iota_prime objective gradient.")
+        elif (which_objective=='iota_target'):
+            print('Evaluating iota_target objective gradient.')
         elif (which_objective=='well'):
             print("Evaluating well objective gradient.")
         elif (which_objective=='volume'):
@@ -763,7 +815,8 @@ class vmecOptimization:
         # Compute gradient
             shape_gradient = self.vmec_shape_gradient(\
                 which_objective=which_objective,\
-                weight_function=weight_function,update=update)
+                weight_function=weight_function,update=update,\
+                iota_target=iota_target)
             [dfdrmnc,dfdzmns,xm_sensitivity,xn_sensitivity] = \
                 parameter_derivatives(shape_gradient,vmecOutputObject,\
                 self.mmax_sensitivity,self.nmax_sensitivity)

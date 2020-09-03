@@ -13,6 +13,7 @@ from matplotlib import pyplot as plt
 import scipy
 import copy
 from scipy.io import netcdf
+from mpi4py import MPI
 
 """
 Required packages: nlopt, f90nml, scanf
@@ -129,12 +130,6 @@ class vmecOptimization:
         self.norm_normal = None
 
         self.vmecOutputObject = None
-        if (woutFilename is None):
-            # Current boundary evaluation
-            [error_code,self.vmecOutputObject] = self.evaluate_vmec() 
-            if (error_code != 0):
-                print('''Unable to evaluate base VMEC equilibrium in 
-                    vmecOptimization constructor.''')
         if (woutFilename is not None):
             self.vmecOutputObject = VmecOutput(woutFilename,self.ntheta,
                                                    self.nzeta)  
@@ -162,83 +157,92 @@ class vmecOptimization:
             evaluations
 
         """
-        if (os.getcwd()!=self.directory):
-            print("Evaluate_vmec called from incorrect directory. Changing to "\
+        rank = MPI.COMM_WORLD.Get_rank()
+        if (rank == 0):
+            if (os.getcwd()!=self.directory):
+                print("Evaluate_vmec called from incorrect directory. Changing to "\
                     +self.directory)
-            os.chdir(self.directory)
-        if (np.count_nonzero([It,pres,boundary] is not None)>1):
-            print('''evaluate_vmec called with more than one type of 
-              perturbation (boundary, It, pres). This behavior is not 
-              supported.''')
-            sys.exit(1)
-        if (boundary is not None):
-        # Update equilibrium count
-            self.counter += 1
-        # Update boundary
-            self.update_boundary_opt(boundary)
-            directory_name = self.name+"_"+str(self.counter)
-        elif (It is not None):
-            directory_name = "delta_curr_"+str(self.counter)
-        elif (pres is not None):
-            directory_name = "delta_pres_"+str(self.counter)
-        elif (self.counter == 0):
-            directory_name = self.name+"_"+str(self.counter)
-        else:
-            print('''Error! evaluate_vmec called when equilibrium does not 
+                os.chdir(self.directory)
+            if (np.count_nonzero([It,pres,boundary] is not None)>1):
+                print('''evaluate_vmec called with more than one type of 
+                  perturbation (boundary, It, pres). This behavior is not 
+                  supported.''')
+                sys.exit(1)
+            if (boundary is not None):
+            # Update equilibrium count
+                self.counter += 1
+            # Update boundary
+                self.update_boundary_opt(boundary)
+                directory_name = self.name+"_"+str(self.counter)
+            elif (It is not None):
+                directory_name = "delta_curr_"+str(self.counter)
+            elif (pres is not None):
+                directory_name = "delta_pres_"+str(self.counter)
+            elif (self.counter == 0):
+                directory_name = self.name+"_"+str(self.counter)
+            else:
+                print('''Error! evaluate_vmec called when equilibrium does not 
                   need to be evaluated.''')
-            sys.exit(1)
-        # Make directory for VMEC evaluations
-        try:
-            os.mkdir(directory_name)
-        except OSError as exc:
-            if exc.errno != errno.EEXIST:
-                print('Warning. Directory '+directory_name+\
+                sys.exit(1)
+            # Make directory for VMEC evaluations
+            try:
+                os.mkdir(directory_name)
+            except OSError as exc:
+                if exc.errno != errno.EEXIST:
+                    print('Warning. Directory '+directory_name+\
                       ' already exists. Contents may be overwritten.')
-                raise
-            pass
+                    raise
+                pass
     
-        input_file = "input."+directory_name
-        os.chdir(directory_name)
+            input_file = "input."+directory_name
 
-        inputObject_new = copy.deepcopy(self.vmecInputObject)
-        inputObject_new.input_filename = input_file
-        inputObject_new.ntor = self.nmax
-        inputObject_new.mpol = self.mmax+1
-        # Edit input filename with boundary 
-        if (It is not None):
-            curtor = 1.5*It[-1] - 0.5*It[-2]
-            s_half = self.vmecOutputObject.s_half
-            if (self.vmecOutputObject.ns>101):
-                s_spline = np.linspace(0,1,102)
-                ds_spline = s_spline[1]-s_spline[0]
-                s_spline_half = s_spline - 0.5*ds_spline
-                s_spline_half = np.delete(s_spline_half,0)
-                It_spline = interpolate.InterpolatedUnivariateSpline(s_half,It)
-                It = It_spline(s_spline_half)
-                s_half = s_spline_half
-            inputObject_new.curtor = curtor
-            inputObject_new.ac_aux_f = list(It)
-            inputObject_new.ac_aux_s = list(s_half)
-            inputObject_new.pcurr_type = "line_segment_I"
-        if (pres is not None):
-            s_half = self.vmecOutputObject.s_half
-            if (self.vmecOutputObject.ns>101):
-                s_spline = np.linspace(0,1,102)
-                ds_spline = s_spline[1]-s_spline[0]
-                s_spline_half = s_spline - 0.5*ds_spline
-                s_spline_half = np.delete(s_spline_half,0)
-                pres_spline = \
-                    interpolate.InterpolatedUnivariateSpline(s_half,pres)
-                pres = pres_spline(s_spline_half)
-                s_half = s_spline_half
-            inputObject_new.am_aux_f = list(pres)
-            inputObject_new.am_aux_s = list(s_half)
-            inputObject_new.pmass_type = "line_segment"
-        if (boundary is not None):
-            inputObject_new.rbc = self.boundary[0:self.mnmax]
-            inputObject_new.zbs = self.boundary[self.mnmax::]
-    
+            inputObject_new = copy.deepcopy(self.vmecInputObject)
+            inputObject_new.input_filename = input_file
+            inputObject_new.ntor = self.nmax
+            inputObject_new.mpol = self.mmax+1
+            # Edit input filename with boundary 
+            if (It is not None):
+                curtor = 1.5*It[-1] - 0.5*It[-2]
+                s_half = self.vmecOutputObject.s_half
+                if (self.vmecOutputObject.ns>101):
+                    s_spline = np.linspace(0,1,102)
+                    ds_spline = s_spline[1]-s_spline[0]
+                    s_spline_half = s_spline - 0.5*ds_spline
+                    s_spline_half = np.delete(s_spline_half,0)
+                    It_spline = interpolate.InterpolatedUnivariateSpline(s_half,It)
+                    It = It_spline(s_spline_half)
+                    s_half = s_spline_half
+                inputObject_new.curtor = curtor
+                inputObject_new.ac_aux_f = list(It)
+                inputObject_new.ac_aux_s = list(s_half)
+                inputObject_new.pcurr_type = "line_segment_I"
+            if (pres is not None):
+                s_half = self.vmecOutputObject.s_half
+                if (self.vmecOutputObject.ns>101):
+                    s_spline = np.linspace(0,1,102)
+                    ds_spline = s_spline[1]-s_spline[0]
+                    s_spline_half = s_spline - 0.5*ds_spline
+                    s_spline_half = np.delete(s_spline_half,0)
+                    pres_spline = \
+                        interpolate.InterpolatedUnivariateSpline(s_half,pres)
+                    pres = pres_spline(s_spline_half)
+                    s_half = s_spline_half
+                inputObject_new.am_aux_f = list(pres)
+                inputObject_new.am_aux_s = list(s_half)
+                inputObject_new.pmass_type = "line_segment"
+            if (boundary is not None):
+                inputObject_new.rbc = self.boundary[0:self.mnmax]
+                inputObject_new.zbs = self.boundary[self.mnmax::]
+        else:
+            inputObject_new = self.vmecInputObject
+            directory_name = None
+            input_file = None
         # Call VMEC with revised input file
+        inputObject_new = MPI.COMM_WORLD.bcast(inputObject_new,root=0)      
+        directory_name = MPI.COMM_WORLD.bcast(directory_name,root=0)
+        input_file = MPI.COMM_WORLD.bcast(input_file,root=0)
+
+        os.chdir(directory_name)
         exit_code = self.call_vmec(inputObject_new)
       
         if (exit_code == 0):
@@ -304,7 +308,7 @@ class vmecOptimization:
         if (boundary is None):
             boundary = self.boundary_opt
         if (np.shape(boundary)!=np.shape(self.boundary_opt)):
-            print('''Error! evaluate_vmec called with incorrect boundary 
+            print('''Error! evaluate_input_objective called with incorrect boundary 
                 shape.''')
             sys.exit(1)
       
@@ -416,7 +420,8 @@ class vmecOptimization:
             boundary_old = np.copy(self.boundary_opt)
         # Evaluate new equilibrium if necessary
         error_code = 0
-        if (boundary is not None and (boundary!=self.boundary_opt).any()):
+        if ((boundary is not None and (boundary!=self.boundary_opt).any()) \
+		or self.vmecOutputObject is None):
             [error_code,vmecOutputObject] = self.evaluate_vmec(\
                                                 boundary=boundary,update=update)
             if (error_code != 0):
@@ -705,7 +710,9 @@ class vmecOptimization:
             if (update==False):
                 boundary_old = np.copy(self.boundary_opt)
             # Update equilibrium count
-            self.counter += 1
+            rank = MPI.COMM_WORLD.Get_rank()
+            if (rank == 0):
+                self.counter += 1
             # Update boundary
             self.update_boundary_opt(boundary)
             # VMEC has not been called with this boundary
@@ -791,7 +798,8 @@ class vmecOptimization:
             sys.exit(1)
 
         # Evaluate base equilibrium if necessary
-        if (boundary is not None and (boundary!=self.boundary_opt).any()):
+        if ((boundary is not None and (boundary!=self.boundary_opt).any())\
+		or self.vmecOutputObject is None):
             [error_code, vmecOutputObject] = self.evaluate_vmec(\
                                                 boundary=boundary,update=update)
             if (error_code != 0):
@@ -902,6 +910,7 @@ class vmecOptimization:
         self.callVMEC_function(vmecInputObject)
         # Check for VMEC errors
         wout_filename = "wout_"+vmecInputObject.input_filename[6::]+".nc"
+        MPI.COMM_WORLD.Barrier()
         f = netcdf.netcdf_file(wout_filename,'r',mmap=False)
         error_code = f.variables["ier_flag"][()]
         # Check if tolerances were met

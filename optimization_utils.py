@@ -133,7 +133,7 @@ class vmecOptimization:
             # Current boundary evaluation
             [error_code,self.vmecOutputObject] = self.evaluate_vmec() 
             if (error_code != 0):
-                print('''Unable to evaluate base VMEC equilibrium in 
+                raise RuntimeError('''Unable to evaluate base VMEC equilibrium in 
                     vmecOptimization constructor.''')
         if (woutFilename is not None):
             self.vmecOutputObject = VmecOutput(woutFilename,self.ntheta,
@@ -209,7 +209,7 @@ class vmecOptimization:
             curtor = 1.5*It[-1] - 0.5*It[-2]
             s_half = self.vmecOutputObject.s_half
             if (self.vmecOutputObject.ns>101):
-                s_spline = np.linspace(0,1,102)
+                s_spline = np.linspace(0,1,101)
                 ds_spline = s_spline[1]-s_spline[0]
                 s_spline_half = s_spline - 0.5*ds_spline
                 s_spline_half = np.delete(s_spline_half,0)
@@ -223,7 +223,7 @@ class vmecOptimization:
         if (pres is not None):
             s_half = self.vmecOutputObject.s_half
             if (self.vmecOutputObject.ns>101):
-                s_spline = np.linspace(0,1,102)
+                s_spline = np.linspace(0,1,101)
                 ds_spline = s_spline[1]-s_spline[0]
                 s_spline_half = s_spline - 0.5*ds_spline
                 s_spline_half = np.delete(s_spline_half,0)
@@ -556,7 +556,8 @@ class vmecOptimization:
             if (iota_target is None):
                 iota_target = np.zeros(np.shape(self.vmecOutputObject.s_half))
             
-            perturbation = weight_half*(iota-iota_target)
+            perturbation = weight_half*(iota-iota_target)\
+                /(self.vmecOutputObject.psi[-1]*self.vmecOutputObject.sign_jac)
             
             It_new = It_half + delta*perturbation
 
@@ -902,7 +903,10 @@ class vmecOptimization:
         self.callVMEC_function(vmecInputObject)
         # Check for VMEC errors
         wout_filename = "wout_"+vmecInputObject.input_filename[6::]+".nc"
-        f = netcdf.netcdf_file(wout_filename,'r',mmap=False)
+        try:
+            f = netcdf.netcdf_file(wout_filename,'r',mmap=False)
+        except:
+            raise RuntimeError('Unable to read '+wout_filename+' in call_vmec.') 
         error_code = f.variables["ier_flag"][()]
         # Check if tolerances were met
         ftolv = f.variables["ftolv"][()]

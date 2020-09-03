@@ -199,44 +199,48 @@ class vmecOptimization:
     
             input_file = "input."+directory_name
 
-        inputObject_new = copy.deepcopy(self.vmecInputObject)
-        inputObject_new.input_filename = input_file
-        inputObject_new.ntor = self.nmax
-        inputObject_new.mpol = self.mmax+1
-        # Edit input filename with boundary 
-        if (It is not None):
-            curtor = 1.5*It[-1] - 0.5*It[-2]
-            s_half = self.vmecOutputObject.s_half
-            if (self.vmecOutputObject.ns>101):
-                s_spline = np.linspace(0,1,101)
-                ds_spline = s_spline[1]-s_spline[0]
-                s_spline_half = s_spline - 0.5*ds_spline
-                s_spline_half = np.delete(s_spline_half,0)
-                It_spline = interpolate.InterpolatedUnivariateSpline(s_half,It)
-                It = It_spline(s_spline_half)
-                s_half = s_spline_half
-            inputObject_new.curtor = curtor
-            inputObject_new.ac_aux_f = list(It)
-            inputObject_new.ac_aux_s = list(s_half)
-            inputObject_new.pcurr_type = "line_segment_I"
-        if (pres is not None):
-            s_half = self.vmecOutputObject.s_half
-            if (self.vmecOutputObject.ns>101):
-                s_spline = np.linspace(0,1,101)
-                ds_spline = s_spline[1]-s_spline[0]
-                s_spline_half = s_spline - 0.5*ds_spline
-                s_spline_half = np.delete(s_spline_half,0)
-                pres_spline = \
-                    interpolate.InterpolatedUnivariateSpline(s_half,pres)
-                pres = pres_spline(s_spline_half)
-                s_half = s_spline_half
-            inputObject_new.am_aux_f = list(pres)
-            inputObject_new.am_aux_s = list(s_half)
-            inputObject_new.pmass_type = "line_segment"
-        if (boundary is not None):
-            inputObject_new.rbc = self.boundary[0:self.mnmax]
-            inputObject_new.zbs = self.boundary[self.mnmax::]
-    
+            inputObject_new = copy.deepcopy(self.vmecInputObject)
+            inputObject_new.input_filename = input_file
+            inputObject_new.ntor = self.nmax
+            inputObject_new.mpol = self.mmax+1
+            # Edit input filename with boundary 
+            if (It is not None):
+                curtor = 1.5*It[-1] - 0.5*It[-2]
+                s_half = self.vmecOutputObject.s_half
+                if (self.vmecOutputObject.ns>101):
+                    s_spline = np.linspace(0,1,101)
+                    ds_spline = s_spline[1]-s_spline[0]
+                    s_spline_half = s_spline - 0.5*ds_spline
+                    s_spline_half = np.delete(s_spline_half,0)
+                    It_spline = interpolate.InterpolatedUnivariateSpline(s_half,It)
+                    It = It_spline(s_spline_half)
+                    s_half = s_spline_half
+                inputObject_new.curtor = curtor
+                inputObject_new.ac_aux_f = list(It)
+                inputObject_new.ac_aux_s = list(s_half)
+                inputObject_new.pcurr_type = "line_segment_I"
+            if (pres is not None):
+                s_half = self.vmecOutputObject.s_half
+                if (self.vmecOutputObject.ns>101):
+                    s_spline = np.linspace(0,1,101)
+                    ds_spline = s_spline[1]-s_spline[0]
+                    s_spline_half = s_spline - 0.5*ds_spline
+                    s_spline_half = np.delete(s_spline_half,0)
+                    pres_spline = \
+                        interpolate.InterpolatedUnivariateSpline(s_half,pres)
+                    pres = pres_spline(s_spline_half)
+                    s_half = s_spline_half
+                inputObject_new.am_aux_f = list(pres)
+                inputObject_new.am_aux_s = list(s_half)
+                inputObject_new.pmass_type = "line_segment"
+            if (boundary is not None):
+                inputObject_new.rbc = self.boundary[0:self.mnmax]
+                inputObject_new.zbs = self.boundary[self.mnmax::]
+        else:
+            inputObject_new = None
+            directory_name = None
+            input_file = None   
+      
         # Call VMEC with revised input file
         inputObject_new = MPI.COMM_WORLD.bcast(inputObject_new,root=0)      
         directory_name = MPI.COMM_WORLD.bcast(directory_name,root=0)

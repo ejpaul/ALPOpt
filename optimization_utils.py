@@ -63,7 +63,7 @@ class vmecOptimization:
     def __init__(self,vmecInputFilename,mmax_sensitivity,
              nmax_sensitivity,callVMEC_function,name,delta_curr=10,
              delta_pres=10,woutFilename=None,ntheta=100,nzeta=100,
-             minCurvatureRadius=0.3):
+             minCurvatureRadius=0.3,verbose=True):
         self.mmax_sensitivity = mmax_sensitivity
         self.nmax_sensitivity = nmax_sensitivity
         [mnmax_sensitivity,xm_sensitivity,xn_sensitivity] = \
@@ -83,6 +83,9 @@ class vmecOptimization:
         self.nzeta = nzeta
         self.jacobian_threshold = 1e-4
         self.minCurvatureRadius = minCurvatureRadius
+        self.verbose = verbose
+        self.vmec_objectives = ['iota','iota_prime','iota_target','well','volume','area','jacobian','radius','normalized_jacoiban','modB_vol']
+        self.input_objectives = ['volume','area','jacobian','radius','normalized_jacobian','summed_proximity']
 
         self.vmecInputObject = VmecInput(vmecInputFilename,ntheta,nzeta)
         self.nfp = self.vmecInputObject.nfp
@@ -96,8 +99,7 @@ class vmecOptimization:
         self.vmec_evaluated = False
 
         if (mpol_input<2):
-            print('Error! mpol must be > 1.')
-            sys.exit(1)
+            raise ValueError('Error! mpol must be > 1.')
 
         # mpol, ntor for calculaitons must be large enough for sensitivity 
             #required
@@ -160,14 +162,14 @@ class vmecOptimization:
         rank = MPI.COMM_WORLD.Get_rank()
         if (rank == 0):
             if (os.getcwd()!=self.directory):
-                print("Evaluate_vmec called from incorrect directory. Changing to "\
-                    +self.directory)
+                if (self.verbose):
+                    print("Evaluate_vmec called from incorrect directory. Changing to "\
+                        +self.directory)
                 os.chdir(self.directory)
             if (np.count_nonzero([It,pres,boundary] is not None)>1):
-                print('''evaluate_vmec called with more than one type of 
+                raise InputError('''evaluate_vmec called with more than one type of 
                   perturbation (boundary, It, pres). This behavior is not 
                   supported.''')
-                sys.exit(1)
             if (boundary is not None):
             # Update equilibrium count
                 self.counter += 1
@@ -181,16 +183,16 @@ class vmecOptimization:
             elif (self.counter == 0):
                 directory_name = self.name+"_"+str(self.counter)
             else:
-                print('''Error! evaluate_vmec called when equilibrium does not 
+                raise RuntimeError('''Error! evaluate_vmec called when equilibrium does not 
                   need to be evaluated.''')
-                sys.exit(1)
             # Make directory for VMEC evaluations
             try:
                 os.mkdir(directory_name)
             except OSError as exc:
                 if exc.errno != errno.EEXIST:
-                    print('Warning. Directory '+directory_name+\
-                      ' already exists. Contents may be overwritten.')
+                    if (self.verbose):
+                        print('Warning. Directory '+directory_name+\
+                          ' already exists. Contents may be overwritten.')
                     raise
                 pass
     
@@ -287,30 +289,29 @@ class vmecOptimization:
   
     def evaluate_input_objective(self,boundary=None,which_objective='volume',\
                                  update=True,ntheta=None,nzeta=None):
-        if (which_objective=='volume'):
-            print("Evaluating volume objective.")
-        elif (which_objective=='area'):
-            print("Evaluating area objective.")
-        elif (which_objective=='jacobian'):
-            print("Evaluating jacobian objective.")
-        elif (which_objective=='radius'):
-            print("Evaluating radius objective.")
-        elif (which_objective=='normalized_jacobian'):
-            print("Evaluating normalized jacobian objective.")
-        elif (which_objective=='proximity'):
-            print("Evaluating proximity objective.")
-        elif (which_objective=='summed_proximity'):
-            print("Evaluating summed proximity objective.")
-        else:
-            print('''incorrect value of which_objective in 
+        if (self.verbose):
+            if (which_objective=='volume'):
+                print("Evaluating volume objective.")
+            elif (which_objective=='area'):
+                print("Evaluating area objective.")
+            elif (which_objective=='jacobian'):
+                print("Evaluating jacobian objective.")
+            elif (which_objective=='radius'):
+                print("Evaluating radius objective.")
+            elif (which_objective=='normalized_jacobian'):
+                print("Evaluating normalized jacobian objective.")
+            elif (which_objective=='proximity'):
+                print("Evaluating proximity objective.")
+            elif (which_objective=='summed_proximity'):
+                print("Evaluating summed proximity objective.")
+        if (which_objective not in self.input_objectives):
+            raise ValueError('''incorrect value of which_objective in 
                   evaluate_input_objective.''')
-            sys.exit(1)
         if (boundary is None):
             boundary = self.boundary_opt
         if (np.shape(boundary)!=np.shape(self.boundary_opt)):
-            print('''Error! evaluate_input_objective called with incorrect boundary 
+            raise InputError('''Error! evaluate_input_objective called with incorrect boundary 
                 shape.''')
-            sys.exit(1)
       
         if ((boundary != self.boundary_opt).any()):
             # Save old boundary if update=False
@@ -323,13 +324,15 @@ class vmecOptimization:
             # VMEC has not been called with this boundary
             self.vmec_evaluated = False
             directory_name = self.name+"_"+str(self.counter)
-            print("Creating new input object in "+directory_name)
+            if (self.verbose):
+                print("Creating new input object in "+directory_name)
             # Make directory for VMEC evaluations
             try:
                 os.mkdir(directory_name)
             except OSError as exc:
                 if exc.errno != errno.EEXIST:
-                    print('Warning. Directory '+directory_name+\
+                    if (self.verbose):
+                        print('Warning. Directory '+directory_name+\
                           ' already exists. Contents may be overwritten.')
                     raise
                 pass
@@ -384,37 +387,36 @@ class vmecOptimization:
             which_objective and weight_function. If VMEC completes with an 
             error, the value of the objective function is set to 1e12.
         """
-        if (which_objective=='iota'):
-            print("Evaluating iota objective.")
-        elif (which_objective=='iota_prime'):
-            print("Evaluating iota_prime objective.")
-        elif (which_objective=='iota_target'):
-            print("Evaluating iota_target objective.")
-        elif (which_objective=='well'):
-            print("Evaluating well objective.")
-        elif (which_objective=='volume'):
-            print("Evaluating volume objective.")
-        elif (which_objective=='area'):
-            print("Evaluating area objective.")
-        elif (which_objective=='jacobian'):
-            print("Evaluating jacobian objective.")
-        elif (which_objective=='radius'):
-            print("Evaluating radius objective.")
-        elif (which_objective=='normalized_jacobian'):
-            print("Evaluating normalized jacobian objective.")
-        elif (which_objective=='modB'):
-            print("Evaluating modB objective.")
-        elif (which_objective=='modB_vol'):
-            print("evaluating modB_vol objective.")
-        else:
-            print('''Error! evaluate_vmec called with incorrect value of 
-                which_objective''')
-            sys.exit(1)
+        if (self.verbose):
+            if (which_objective=='iota'):
+                print("Evaluating iota objective.")
+            elif (which_objective=='iota_prime'):
+                print("Evaluating iota_prime objective.")
+            elif (which_objective=='iota_target'):
+                print("Evaluating iota_target objective.")
+            elif (which_objective=='well'):
+                print("Evaluating well objective.")
+            elif (which_objective=='volume'):
+                print("Evaluating volume objective.")
+            elif (which_objective=='area'):
+                print("Evaluating area objective.")
+            elif (which_objective=='jacobian'):
+                print("Evaluating jacobian objective.")
+            elif (which_objective=='radius'):
+                print("Evaluating radius objective.")
+            elif (which_objective=='normalized_jacobian'):
+                print("Evaluating normalized jacobian objective.")
+            elif (which_objective=='modB'):
+                print("Evaluating modB objective.")
+            elif (which_objective=='modB_vol'):
+                print("evaluating modB_vol objective.")
+        if (which_objective not in self.vmec_objectives):
+            raise ValueError('''Error! evaluate_vmec called with incorrect value of 
+                  which_objective''')
         if (boundary is None):
             boundary = self.boundary_opt
         if (np.shape(boundary)!=np.shape(self.boundary_opt)):
-            print("Error! evaluate_vmec called with incorrect boundary shape.")
-            sys.exit(1)
+            raise ValueError("Error! evaluate_vmec called with incorrect boundary shape.")
         # Save old boundary if update=False
         if (update==False):
             boundary_old = np.copy(self.boundary_opt)
@@ -424,7 +426,7 @@ class vmecOptimization:
 		or self.vmecOutputObject is None):
             [error_code,vmecOutputObject] = self.evaluate_vmec(\
                                                 boundary=boundary,update=update)
-            if (error_code != 0):
+            if (error_code != 0 and self.verbose):
                 print('''VMEC returned with an error when evaluating new 
                     boundary in evaluate_vmec_objective.''')
                 print('Objective function will be set to 1e12')
@@ -487,37 +489,42 @@ class vmecOptimization:
             error, the value of the objective function is set to 1e12.
         """
         if (which_objective=='iota'):
-            print("Evaluating iota objective shape gradient.")
+            if (self.verbose):
+                print("Evaluating iota objective shape gradient.")
             delta = self.delta_curr
         elif (which_objective=='iota_prime'):
-            print("Evaluating iota_prime objective shape gradient.")
+            if (self.verbose):
+                print("Evaluating iota_prime objective shape gradient.")
             delta = self.delta_curr
         elif (which_objective=='iota_target'):
-            print("Evaluating iota_target objective shape gradient.")
+            if (self.verbose):
+                print("Evaluating iota_target objective shape gradient.")
             delta = self.delta_curr
         elif (which_objective=='well'):
-            print("Evaluating well objective shape gradient.")
+            if (self.verbose):
+                print("Evaluating well objective shape gradient.")
             delta = self.delta_pres
         elif (which_objective=='volume'):
-            print("Evaluating volume shape gradient.")
+            if (self.verbose):
+                print("Evaluating volume shape gradient.")
             return np.ones(np.shape(self.vmecOutputObject.zetas_2d))
         elif (which_objective=='area'):
-            print("Evaluating area shape gradient.")
+            if (self.verbose):
+                print("Evaluating area shape gradient.")
         elif (which_objective=='modB_vol'):
-            print("Evaluating modB_vol shape gradient.")
+            if (self.verbose):
+                print("Evaluating modB_vol shape gradient.")
         else:
-            print("Error! vmec_shape_gradient called with incorrect value of"+\
+            raise ValueError("Error! vmec_shape_gradient called with incorrect value of"+\
                   which_objective)
-            sys.exit(1)
       
         # Evaluate base equilibrium if necessary
         if (boundary is not None and (boundary!=self.boundary_opt).all()):
             [error_code, vmecOutputObject] = self.evaluate_vmec(\
                                                 boundary=boundary,update=update)
             if (error_code != 0):
-                print('''Unable to evaluate base VMEC equilibrium in 
+                raise RuntimeError('''Unable to evaluate base VMEC equilibrium in 
                     vmec_shape_gradient.''')
-                sys.exit(1)
         else:
             vmecOutputObject = self.vmecOutputObject
 
@@ -530,9 +537,8 @@ class vmecOptimization:
 
             [error_code, vmecOutput_delta] = self.evaluate_vmec(It=It_new)
             if (error_code != 0):
-                print('''Unable to evaluate VMEC equilibrium with current 
+                raise RuntimeError('''Unable to evaluate VMEC equilibrium with current 
                     perturbation in vmec_shaep_gradient.''')
-                sys.exit(1)
 
             [Bx_delta, By_delta, Bz_delta, theta_arclength_delta] = \
                 vmecOutput_delta.B_on_arclength_grid()
@@ -567,9 +573,8 @@ class vmecOptimization:
 
             [error_code, vmecOutput_delta] = self.evaluate_vmec(It=It_new)
             if (error_code != 0):
-                print('''Unable to evaluate VMEC equilibrium with current 
+                raise RuntimeError('''Unable to evaluate VMEC equilibrium with current 
                     perturbation in vmec_shaep_gradient.''')
-                sys.exit(1)
 
             [Bx_delta, By_delta, Bz_delta, theta_arclength_delta] = \
                 vmecOutput_delta.B_on_arclength_grid()
@@ -620,9 +625,8 @@ class vmecOptimization:
 
             [error_code, vmecOutput_delta] = self.evaluate_vmec(It=It_new)
             if (error_code != 0):
-                print('''Unable to evaluate VMEC equilibrium with current 
+                raise RuntimeError('''Unable to evaluate VMEC equilibrium with current 
                     perturbation in vmec_shaep_gradient.''')
-                sys.exit(1)
 
             [Bx_delta, By_delta, Bz_delta, theta_arclength_delta] = \
                 vmecOutput_delta.B_on_arclength_grid()
@@ -650,9 +654,8 @@ class vmecOptimization:
       
             [error_code, vmecOutput_delta] = self.evaluate_vmec(pres=pres_new)
             if (error_code != 0):
-                print('''Unable to evaluate VMEC equilibrium with pressure 
+                raise RuntimeError('''Unable to evaluate VMEC equilibrium with pressure 
                     perturbation in vmec_shaep_gradient.''')
-                sys.exit(1)  
         
             [Bx_delta, By_delta, Bz_delta, theta_arclength_delta] = \
                 vmecOutput_delta.B_on_arclength_grid()
@@ -683,29 +686,28 @@ class vmecOptimization:
     def evaluate_input_objective_grad(self,boundary=None,\
                                       which_objective='volume',update=True,\
                                       ntheta=None,nzeta=None):
-        if (which_objective=='volume'):
-            print("Evaluating volume objective gradient.")
-        elif (which_objective=='area'):
-            print("Evaluating area objective gradient.")
-        elif (which_objective=='jacobian'):
-            print("Evaluating jacobian objective gradient.")
-        elif (which_objective=='radius'):
-            print("Evaluating radius objective gradient.")
-        elif (which_objective=='normalized_jacobian'):
-            print("Evaluating normalized_jacobian objective gradient.")
-        elif (which_objective=='summed_proximity'):
-            print("Evaluating summed proximity objective gradient.")
-        else:
-            print('''Error! evaluate_input_objective_grad called with incorrect 
+        if (self.verbose):
+            if (which_objective=='volume'):
+                print("Evaluating volume objective gradient.")
+            elif (which_objective=='area'):
+                print("Evaluating area objective gradient.")
+            elif (which_objective=='jacobian'):
+                print("Evaluating jacobian objective gradient.")
+            elif (which_objective=='radius'):
+                print("Evaluating radius objective gradient.")
+            elif (which_objective=='normalized_jacobian'):
+                print("Evaluating normalized_jacobian objective gradient.")
+            elif (which_objective=='summed_proximity'):
+                print("Evaluating summed proximity objective gradient.")
+        if (which_objective not in self.input_objectives):
+            raise ValueError('''Error! evaluate_input_objective_grad called with incorrect 
                 value of which_objective.''')
-            sys.exit(1)  
       
         # Get new input object if necessary
         if (boundary is not None and (boundary!=self.boundary_opt).any()):
             if (np.shape(boundary)!=np.shape(self.boundary_opt)):
-                print('''Error! evaluate_vmec called with incorrect boundary 
+                raise ValueError('''Error! evaluate_vmec called with incorrect boundary 
                     shape.''')
-                sys.exit(1)
             # Save old boundary if update=False
             if (update==False):
                 boundary_old = np.copy(self.boundary_opt)
@@ -723,7 +725,8 @@ class vmecOptimization:
                 os.mkdir(directory_name)
             except OSError as exc:
                 if exc.errno != errno.EEXIST:
-                    print('Warning. Directory '+directory_name+\
+                    if (self.verbose):
+                        print('Warning. Directory '+directory_name+\
                           ' already exists. Contents may be overwritten.')
                     raise
                 pass
@@ -772,30 +775,30 @@ class vmecOptimization:
     def evaluate_vmec_objective_grad(self,boundary=None,which_objective='iota',\
                                      weight_function=axis_weight,update=True,\
                                      iota_target=None):
-        if (which_objective=='iota'):
-            print("Evaluating iota objective gradient.")
-        elif (which_objective=='iota_prime'):
-            print("Evaluating iota_prime objective gradient.")
-        elif (which_objective=='iota_target'):
-            print('Evaluating iota_target objective gradient.')
-        elif (which_objective=='well'):
-            print("Evaluating well objective gradient.")
-        elif (which_objective=='volume'):
-            print("Evaluating volume objective gradient.")
-        elif (which_objective=='area'):
-            print("Evaluating area objective gradient.")
-        elif (which_objective=='jacobian'):
-            print("Evaluating jacobian objective gradient.")
-        elif (which_objective=='radius'):
-            print("Evaluating radius objective gradient.")
-        elif (which_objective=='normalized_jacobian'):
-            print("Evaluating normalized_jacobian gradient.")
-        elif (which_objective=='modB_vol'):
-            print("Evaluating modB_vol objective gradient.")
-        else:
-            print('''Error! evaluate_vmec_objective_grad called with incorrect \
+        if (self.verbose):
+            if (which_objective=='iota'):
+                print("Evaluating iota objective gradient.")
+            elif (which_objective=='iota_prime'):
+                print("Evaluating iota_prime objective gradient.")
+            elif (which_objective=='iota_target'):
+                print('Evaluating iota_target objective gradient.')
+            elif (which_objective=='well'):
+                print("Evaluating well objective gradient.")
+            elif (which_objective=='volume'):
+                print("Evaluating volume objective gradient.")
+            elif (which_objective=='area'):
+                print("Evaluating area objective gradient.")
+            elif (which_objective=='jacobian'):
+                print("Evaluating jacobian objective gradient.")
+            elif (which_objective=='radius'):
+                print("Evaluating radius objective gradient.")
+            elif (which_objective=='normalized_jacobian'):
+                print("Evaluating normalized_jacobian gradient.")
+            elif (which_objective=='modB_vol'):
+                print("Evaluating modB_vol objective gradient.")
+        if (which_objective not in self.vmec_objectives):
+            raise ValueError('''Error! evaluate_vmec_objective_grad called with incorrect \
                 value of which_objective.''')
-            sys.exit(1)
 
         # Evaluate base equilibrium if necessary
         if ((boundary is not None and (boundary!=self.boundary_opt).any())\
@@ -803,9 +806,8 @@ class vmecOptimization:
             [error_code, vmecOutputObject] = self.evaluate_vmec(\
                                                 boundary=boundary,update=update)
             if (error_code != 0):
-                print('''Unable to evaluate base VMEC equilibrium in\
+                raise RuntimeError('''Unable to evaluate base VMEC equilibrium in\
                     vmec_shape_gradient.''')
-                sys.exit(1)
         else:
             vmecOutputObject = self.vmecOutputObject
 
@@ -833,9 +835,8 @@ class vmecOptimization:
         elif (dfdrmnc.ndim==3):
             gradient = np.vstack((dfdrmnc,dfdzmns[1::,:,:]))
         else:
-            print('''Incorrect shape of derivatives encountered in 
+            raise RuntimeError('''Incorrect shape of derivatives encountered in 
                 evaluate_vmec_objective_grad.''')
-            sys.exit(0)
       
         return np.squeeze(gradient)
   
@@ -871,22 +872,25 @@ class vmecOptimization:
         if (intersecting):
             # print input namelist for the record
             vmecInputObject.print_namelist()
-            print('''Requested boundary is self-intersecting. 
-                I will not call VMEC.''')
+            if (self.verbose):
+                print('''Requested boundary is self-intersecting. 
+                    I will not call VMEC.''')
             return 16
         else:
             orientable = self.test_jacobian(vmecInputObject)
             if (not orientable):
                 # print input namelist for the record
                 vmecInputObject.print_namelist()
-                print('''Requested boundary has ill-conditioned Jacobian. 
-                    I will not call VMEC.''')
+                if (self.verbose):
+                    print('''Requested boundary has ill-conditioned Jacobian. 
+                        I will not call VMEC.''')
                 return 15
             else:
                 inSurface = vmecInputObject.test_axis()
                 if (not inSurface):
-                    print('''Initial magnetic axis does not lie within requested
-                        boundary! Trying a modified axis shape.''')
+                    if (self.verbose):
+                        print('''Initial magnetic axis does not lie within requested
+                            boundary! Trying a modified axis shape.''')
                     return_value = vmecInputObject.modify_axis()
                     if (return_value == -1):
                         # print input namelist for the record
@@ -922,7 +926,8 @@ class vmecOptimization:
             error_code = 2
     
         if (error_code != 0):
-            print('VMEC completed with error code '+str(error_code))
+            if (self.verbose):
+                print('VMEC completed with error code '+str(error_code))
     
         return error_code
   
@@ -973,7 +978,8 @@ class vmecOptimization:
                     f = netcdf.netcdf_file(wout_filename,'r',mmap=False)
                     error_code = f.variables["ier_flag"][()]
                     if (error_code != 0):
-                        print('VMEC completed with error code '+\
+                        if (self.verbose):
+                            print('VMEC completed with error code '+\
                               str(error_code)+' in '+dir+\
                               ". Moving on to next directory. \
                               Objective function will be set to zero.")
@@ -994,11 +1000,11 @@ class vmecOptimization:
                             [X,Y,Z,R] = readVmecObject.compute_position()
                             objective[i] = np.min(R)
                         else:
-                            print('''Incorrect objective specified in 
+                            raise ValueError('''Incorrect objective specified in 
                                 optimization_plot!''')
-                            sys.exit(1)
                 else:
-                    print("wout_filename not found in "+dir_list[i]+\
+                    if (self.verbose):
+                        print("wout_filename not found in "+dir_list[i]+\
                           '''. Moving on to next directory Objective function 
                           will be set to zero.''')
             os.chdir('..')

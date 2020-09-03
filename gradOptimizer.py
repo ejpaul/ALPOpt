@@ -278,6 +278,10 @@ class GradOptimizer:
                            np.array(objective_values))
         self.objective_hist.append(objective)
         self.neval_objectives += 1
+        
+        np.savetxt('objectives_hist.txt',self.objectives_hist)
+        np.savetxt('objective_hist.txt',self.objective_hist)
+        
         return objective
                 
     def objectives_grad_fun(self,x):
@@ -310,6 +314,9 @@ class GradOptimizer:
         grad_norm = scipy.linalg.norm(objective_grad)
         self.objectives_grad_norm_hist.append(grad_norm)
         self.neval_objectives_grad += 1
+
+        np.savetxt('objectives_grad_norm_hist.txt',self.objectives_grad_norm_hist)
+
         return objective_grad
     
     def ineq_fun(self,x):
@@ -375,7 +382,7 @@ class GradOptimizer:
         return ineq_grad.T
     
     def optimize(self,x,package='nlopt',method='CCSAQ',ftol_abs=1e-4,
-                 ftol_rel=1e-4,xtol_abs=1e-4,xtol_rel=1e-4,tol=1e-4):
+                 ftol_rel=1e-4,xtol_abs=1e-4,xtol_rel=1e-4,tol=1e-4,**kwargs):
         """
         Optimizes scalarized objective function using nlopt or scipy package
             
@@ -409,11 +416,19 @@ class GradOptimizer:
         if (package == 'nlopt'):
             self._test_method_nlopt(method)
             [xopt, fopt, result] = self.nlopt_optimize(x,method,ftol_abs,ftol_rel,\
-                                       xtol_abs,xtol_rel)
+                                       xtol_abs,xtol_rel,**kwargs)
         if (package == 'scipy'):
             self._test_method_scipy(method)
-            [xopt, fopt, result] = self.scipy_optimize(x,method,tol)
-            
+            [xopt, fopt, result] = self.scipy_optimize(x,method,**kwargs)
+        # Save output    
+        np.savetxt('xopt.txt',xopt)
+        np.savetxt('fopt.txt',[fopt])
+        np.savetxt('result.txt',[result])
+        np.savetxt('parameters_hist.txt',self.parameters_hist)
+        np.savetxt('objectives_hist.txt',self.objectives_hist)
+        np.savetxt('objective_hist.txt',self.objective_hist)
+        np.savetxt('objectives_grad_norm_hist.txt',self.objectives_grad_norm_hist)
+
         return xopt, fopt, result
 
     def nlopt_objective(self, x, grad):
@@ -607,17 +622,16 @@ class GradOptimizer:
             opt.set_lower_bounds(self.bound_constraints_min)
         if (len(self.bound_constraints_max)>0):
             opt.set_upper_bounds(self.bound_constraints_max)
-#         try: 
-        xopt = opt.optimize(x)
-#         except:
-#             print('Nlopt completed with an error')
-#             # Take x from history
+        try: 
+            xopt = opt.optimize(x)
+        except:
+            print('Nlopt completed with an error')
         xopt = self.parameters_hist[-1,:]
         fopt = opt.last_optimum_value()
         result = opt.last_optimize_result()
         return xopt, fopt, result
     
-    def scipy_optimize(self,x,method='BFGS',tol=1e-4):
+    def scipy_optimize(self,x,method='BFGS',**kwargs):
         """
         Optimize objective function with scipy
         
@@ -635,7 +649,7 @@ class GradOptimizer:
         """
 
         self._test_method_scipy(method)
-        self._test_scalar(tol,'tol')
+#         self._test_scalar(tol,'tol')
 
         if (self.bound_constrained):
             if (len(self.bound_constraints_min)>0):
@@ -681,10 +695,12 @@ class GradOptimizer:
             constraints = None
         OptimizeResult = scipy.optimize.minimize(self.objectives_fun, x, \
                        method=method,jac=self.objectives_grad_fun,bounds=bounds,\
-                       constraints = constraints, tol = tol)
+                       constraints = constraints,\
+                       **kwargs)
         xopt = OptimizeResult.x
         result = OptimizeResult.status
         fopt = OptimizeResult.fun
+        print(OptimizeResult.message)
         return xopt, fopt, result
         
     def _test_x(self,x):

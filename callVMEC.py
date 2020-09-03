@@ -1,8 +1,8 @@
 import subprocess
 import sys
 import os
-# from vmec_class import VMEC
-# from mpi4py import MPI
+from vmec_class import VMEC
+from mpi4py import MPI
 import numpy as np
 from scipy.io import netcdf
 
@@ -22,9 +22,9 @@ class callVMEC_batch:
     def callVMEC(self,inputObject):
         self.update_batch(inputObject.input_filename)
         completedProcess = subprocess.run(['sbatch','-W',self.sample_batch],capture_output=True)
-        if (completedProcess.returncode != 0):
-            print('Error in submitting batch job! Code = '+str(completedProcess.returncode))
-            sys.exit(1)
+        #if (completedProcess.returncode != 0):
+        #    print('Error in submitting batch job! Code = '+str(completedProcess.returncode))
+        #    sys.exit(1)
     
     # update sample_batch with new input_filename
     def update_batch(self,input_filename):
@@ -76,22 +76,25 @@ class callVMEC_commandline:
                             stdout=fout,stderr=ferr)
 
         if (exit_code != 0):
-            print('VMEC returned with an error (exit_code = '+str(exit_code)+')')
-            sys.exit(1)
+            raise RuntimeError('VMEC returned with an error (exit_code = '+str(exit_code)+')')
   
 class callVMEC_interface:
     def __init__(self,input_filename='',verbose=False):
         self.input_filename = input_filename
         self.verbose = verbose
-        self.comm = MPI.COMM_WORLD
-        self.vmecObject = VMEC(input_file=input_filename,verbose=self.verbose,comm=self.comm.py2f())
+        self.vmecObject = VMEC(input_file=input_filename,verbose=self.verbose,comm=MPI.COMM_WORLD.py2f())
     
     def callVMEC(self,inputObject):
         input_filename = inputObject.input_filename
-    
+
+        rank = MPI.COMM_WORLD.Get_rank()
         # Set desired input data
-        self.vmecObject.indata.raxis[0:len(inputObject.raxis)] = np.copy(inputObject.raxis)
-        self.vmecObject.indata.zaxis[0:len(inputObject.zaxis)] = np.copy(inputObject.zaxis)
+        raxis_cc = np.zeros(102)
+        zaxis_cs = np.zeros(102)
+        raxis_cc[0:len(inputObject.raxis)] = np.copy(inputObject.raxis)
+        zaxis_cs[0:len(inputObject.zaxis)] = np.copy(inputObject.zaxis)
+        self.vmecObject.indata.raxis_cc = np.copy(raxis_cc)
+        self.vmecObject.indata.zaxis_cs = np.copy(zaxis_cs)
         if inputObject.curtor is not None:
             self.vmecObject.indata.curtor = inputObject.curtor
         if inputObject.ac_aux_f is not None:
@@ -119,14 +122,20 @@ class callVMEC_interface:
         self.vmecObject.indata.rbc = np.copy(rbc)
         self.vmecObject.indata.zbs = np.copy(zbs)
         self.vmecObject.reinit()
-
-        rank = self.comm.Get_rank()
+	
         if rank == 0:
             verbose = self.verbose
         else:
             verbose = False
-        self.vmecObject.run(iseq=rank,input_file=input_filename,verbose=verbose)
-        return self.vmecObject.ictrl[1]
+        self.vmecObject.run(iseq=rank,input_file=input_filename)
+        MPI.COMM_WORLD.Barrier()
+        self.vmecObject.load()
+        if (rank == 0):
+            status = self.vmecObject.ictrl[1]
+        else:
+            status = 0
+        status = MPI.COMM_WORLD.bcast(status,root=0)
+        return status
     
     
 

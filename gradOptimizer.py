@@ -3,6 +3,7 @@ import numpy as np
 import sys
 import scipy.linalg
 import nlopt
+from BFGS import *
 
 """
 A class used for gradient-based optimization
@@ -55,6 +56,7 @@ class GradOptimizer:
         self.neval_eq_constraints = 0
         self.neval_eq_constraints_grad = 0                
 
+        self.custom_methods = ('BFGS')
         self.nlopt_methods = ('MMA','SLSQP','CCSAQ','LBFGS','TNEWTON',\
                               'TNEWTON_PRECOND_RESTART','TNEWTON_PRECOND',\
                               'TNEWTON_RESTART','VAR2','VAR1','StOGO',\
@@ -375,7 +377,7 @@ class GradOptimizer:
         return ineq_grad.T
     
     def optimize(self,x,package='nlopt',method='CCSAQ',ftol_abs=1e-4,
-                 ftol_rel=1e-4,xtol_abs=1e-4,xtol_rel=1e-4,tol=1e-4):
+                 ftol_rel=1e-4,xtol_abs=1e-4,xtol_rel=1e-4,tol=1e-4,**kwargs):
         """
         Optimizes scalarized objective function using nlopt or scipy package
             
@@ -403,8 +405,8 @@ class GradOptimizer:
         self._test_scalar(xtol_abs,'xtol_abs')
         self._test_scalar(xtol_rel,'xtol_rel')
 
-        if (package not in ('nlopt','scipy')):
-            raise ValueError("package must be 'nlopt' or 'scipy'")
+        if (package not in ('nlopt','scipy','custom')):
+            raise ValueError("package must be ['nlopt','scipy','custom']")
             
         if (package == 'nlopt'):
             self._test_method_nlopt(method)
@@ -414,8 +416,12 @@ class GradOptimizer:
             self._test_method_scipy(method)
             [xopt, fopt, result] = self.scipy_optimize(x,method,tol)
             
+        if (package == 'custom'):
+            self._test_method_custom(method)
+            [xopt, fopt, result] = self.custom_optimize(x,method,tol,**kwargs)
+            
         return xopt, fopt, result
-
+    
     def nlopt_objective(self, x, grad):
         """
         Scalarized objective function in format required by nlopt
@@ -528,6 +534,37 @@ class GradOptimizer:
                     grad[:,:] = np.zeros([self.n_eq_constraints,self.nparameters])
 
 
+    def custom_optimize(self,x,method='BFGS',epsilon = 1e-6,beta = 1,\
+                        alpha_max = 1,alpha_scale = 0.1,alpha_tol = 1e-12,\
+                        rho_backtrack = 0.9,alpha0 = 1.0,c1 = 1e-4,c2 = 0.9,
+                        **kwargs):
+        
+        self._test_scalar(epsilon,'epsilon')
+        self._test_scalar(beta,'beta')
+        self._test_scalar(alpha_max,'alpha_max')
+        self._test_scalar(alpha_scale,'alpha_scale')
+        self._test_scalar(alpha_tol,'alpha_tol')
+        self._test_scalar(rho_backtrack,'rho_backtrack')
+        self._test_scalar(alpha0,'alpha0')
+        self._test_scalar(c1,'c1')
+        self._test_scalar(c2,'c2')
+
+        customOptimizer = BFGS()
+        customOptimizer.epsilon = epsilon
+        customOptimizer.beta = beta
+        customOptimizer.alpha_max = alpha_max
+        customOptimizer.alpha_scale = alpha_scale
+        customOptimizer.alpha_tol = alpha_tol
+        customOptimizer.rho_backtrack = rho_backtrack
+        customOptimizer.alpha0 = alpha0
+        customOptimizer.c1 = c1
+        customOptimizer.c2 = c2
+        
+        [xopt,fopt,result] = customOptimizer.BFGS_opt(x,self.objectives_fun,self.objectives_grad_fun,
+                                                     **kwargs)
+        
+        return xopt, fopt, result
+    
     def nlopt_optimize(self,x,method='SLSQP',ftol_abs=1e-8,ftol_rel=1e-8,\
                        xtol_abs=1e-8,xtol_rel=1e-8,ineq_tol=1e-8,eq_tol=1e-8):
         """
@@ -679,9 +716,15 @@ class GradOptimizer:
             constraints = eq_constraints
         else:
             constraints = None
-        OptimizeResult = scipy.optimize.minimize(self.objectives_fun, x, \
+        if (method in ['dogleg','trust-ncg','trust-krylov','trust-exact',\
+                              'trust-constr']):
+            OptimizeResult = scipy.optimize.minimize(self.objectives_fun, x, \
                        method=method,jac=self.objectives_grad_fun,bounds=bounds,\
-                       constraints = constraints, tol = tol)
+                       constraints = constraints, tol = tol, hess='2-point')
+        else:
+            OptimizeResult = scipy.optimize.minimize(self.objectives_fun, x, \
+                       method=method,jac=self.objectives_grad_fun,bounds=bounds,\
+                       constraints = constraints, tol = tol)        
         xopt = OptimizeResult.x
         result = OptimizeResult.status
         fopt = OptimizeResult.fun
@@ -699,6 +742,12 @@ class GradOptimizer:
     def _test_function(self,function,function_name):
         if (not callable(function)):
             raise TypeError(function_name+' must be a function')
+            
+    def _test_method_custom(self,method):
+        if (method not in self.custom_methods):
+            raise ValueError('method must be in '+str(self.custom_methods))
+        if (self.ineq_constrained or self.eq_constrained or self.bound_constrained):
+            raise ValueError('method must be unconstrained')
             
     def _test_method_nlopt(self,method):
         if (method not in self.nlopt_methods):

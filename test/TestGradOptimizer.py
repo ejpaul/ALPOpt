@@ -249,6 +249,11 @@ class Test(unittest.TestCase):
             self.gradOptimizer.optimize(x,package='scipy',method='CG')
         self.assertAlmostEqual(fopt,0)
         self.assertTrue(np.allclose(xopt,1,atol=1e-3))
+        # Test custom BFGS
+        [xopt,fopt,result] = \
+            self.gradOptimizer.optimize(x,package='custom',method='BFGS')
+        self.assertAlmostEqual(fopt,0)
+        self.assertTrue(np.allclose(xopt,1,atol=1e-3))        
 
         
         # Test bound constrained Rosenbrock function

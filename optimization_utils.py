@@ -63,7 +63,7 @@ class vmecOptimization:
     def __init__(self,vmecInputFilename,mmax_sensitivity,
              nmax_sensitivity,callVMEC_function,name,delta_curr=10,
              delta_pres=10,woutFilename=None,ntheta=100,nzeta=100,
-             minCurvatureRadius=0.3,verbose=True):
+             minCurvatureRadius=0.3,verbose=True,callANIMEC_function=None):
         self.mmax_sensitivity = mmax_sensitivity
         self.nmax_sensitivity = nmax_sensitivity
         [mnmax_sensitivity,xm_sensitivity,xn_sensitivity] = \
@@ -72,6 +72,7 @@ class vmecOptimization:
         self.xm_sensitivity = xm_sensitivity
         self.xn_sensitivity = xn_sensitivity
         self.callVMEC_function = callVMEC_function
+        self.callANIMEC_function = callANIMEC_function
         self.counter = 0 # Counts number of function evals (used for 
             # naming directories)
         self.name = name # Name used for directories
@@ -84,8 +85,11 @@ class vmecOptimization:
         self.jacobian_threshold = 1e-4
         self.minCurvatureRadius = minCurvatureRadius
         self.verbose = verbose
-        self.vmec_objectives = ['iota','iota_prime','iota_target','well','volume','area','jacobian','radius','normalized_jacoiban','modB_vol']
-        self.input_objectives = ['volume','area','jacobian','radius','normalized_jacobian','summed_proximity']
+        self.vmec_objectives = ['iota','iota_prime','iota_target','well',\
+                                'volume','area','jacobian','radius',\
+                                'normalized_jacoiban','modB_vol','axis_ripple']
+        self.input_objectives = ['volume','area','jacobian','radius',\
+                                 'normalized_jacobian','summed_proximity']
 
         self.vmecInputObject = VmecInput(vmecInputFilename,ntheta,nzeta)
         self.nfp = self.vmecInputObject.nfp
@@ -233,6 +237,113 @@ class vmecOptimization:
                 inputObject_new.am_aux_f = list(pres)
                 inputObject_new.am_aux_s = list(s_half)
                 inputObject_new.pmass_type = "line_segment"
+            if (boundary is not None):
+                inputObject_new.rbc = self.boundary[0:self.mnmax]
+                inputObject_new.zbs = self.boundary[self.mnmax::]
+        else:
+            inputObject_new = None
+            directory_name = None
+            input_file = None   
+      
+        # Call VMEC with revised input file
+        inputObject_new = MPI.COMM_WORLD.bcast(inputObject_new,root=0)      
+        directory_name = MPI.COMM_WORLD.bcast(directory_name,root=0)
+        input_file = MPI.COMM_WORLD.bcast(input_file,root=0)
+
+        os.chdir(directory_name)
+        exit_code = self.call_vmec(inputObject_new)
+      
+        if (exit_code == 0):
+            # Read from new equilibrium
+            outputFileName = "wout_"+input_file[6::]+".nc"
+            vmecOutput_new = \
+                VmecOutput(outputFileName,self.ntheta,self.nzeta)
+            if (boundary is not None and update):
+                self.vmecOutputObject = vmecOutput_new
+                self.vmec_evaluated = True
+        else:
+            vmecOutput_new = None
+
+        os.chdir("..")
+        return exit_code, vmecOutput_new
+    
+    def evaluate_animec(self,boundary=None,pres=None):
+        """
+        Evaluates ANIVMEC equilibrium with specified boundary pressure 
+            profile update
+
+        boundary and pres should not be specified simultaneously. 
+        If neither are specified, then an exception is raised.
+
+        Parameters
+        ----------
+        boundary (float array) : values of boundary harmonics for VMEC 
+            evaluations
+        pres (float array) : value of hot pressure on half grid VMEC mesh for 
+            prescription of profile with "ah_aux_f" Fortran namelist variable
+
+        Returns
+        ----------
+        vmecOutput_new (vmecOutput) : object corresponding to output of ANIMEC
+            evaluations
+        """        
+        rank = MPI.COMM_WORLD.Get_rank()
+        if (rank == 0):
+            if (os.getcwd()!=self.directory):
+                if (self.verbose):
+                    print("evaluate_animec called from incorrect directory. Changing to "\
+                        +self.directory)
+                os.chdir(self.directory)
+            if (np.count_nonzero([pres,boundary] is not None)>1):
+                raise InputError('''evaluate_animec called with more than one type of 
+                  perturbation (boundary, pres). This behavior is not 
+                  supported.''')
+            if (boundary is not None):
+            # Update equilibrium count
+                self.counter += 1
+            # Update boundary
+                self.update_boundary_opt(boundary)
+                directory_name = self.name+"_"+str(self.counter)
+            elif (pres is not None):
+                directory_name = "delta_pres_"+str(self.counter)
+            elif (self.counter == 0):
+                directory_name = self.name+"_"+str(self.counter)
+            else:
+                raise RuntimeError('''Error! evaluate_animec called when 
+                  equilibrium does not need to be evaluated.''')
+            # Make directory for ANIMEC evaluations
+            try:
+                os.mkdir(directory_name)
+            except OSError as exc:
+                if exc.errno != errno.EEXIST:
+                    if (self.verbose):
+                        print('Warning. Directory '+directory_name+\
+                          ' already exists. Contents may be overwritten.')
+                    raise
+                pass
+    
+            input_file = "input."+directory_name
+
+            inputObject_new = copy.deepcopy(self.vmecInputObject)
+            inputObject_new.input_filename = input_file
+            inputObject_new.ntor = self.nmax
+            inputObject_new.mpol = self.mmax+1
+            # Edit input filename with boundary 
+            if (pres is not None):
+                s_half = self.vmecOutputObject.s_half
+                if (self.vmecOutputObject.ns>101):
+                    s_spline = np.linspace(0,1,101)
+                    ds_spline = s_spline[1]-s_spline[0]
+                    s_spline_half = s_spline - 0.5*ds_spline
+                    s_spline_half = np.delete(s_spline_half,0)
+                    pres_spline = \
+                        interpolate.InterpolatedUnivariateSpline(s_half,pres)
+                    pres = pres_spline(s_spline_half)
+                    s_half = s_spline_half
+                inputObject_new.ah_aux_f = list(pres)
+                inputObject_new.ah_aux_s = list(s_half)
+                inputObject_new.photp_type = "line_segment"
+                inputObject_new.bcrit = 1
             if (boundary is not None):
                 inputObject_new.rbc = self.boundary[0:self.mnmax]
                 inputObject_new.zbs = self.boundary[self.mnmax::]
@@ -412,6 +523,8 @@ class vmecOptimization:
                 print("Evaluating modB objective.")
             elif (which_objective=='modB_vol'):
                 print("evaluating modB_vol objective.")
+            elif (which_objective=='axis_ripple'):
+                print("Evaluating axis_ripple objective gradient.")
         if (which_objective not in self.vmec_objectives):
             raise ValueError('''Error! evaluate_vmec called with incorrect value of 
                   which_objective''')
@@ -469,6 +582,8 @@ class vmecOptimization:
                 objective_function = vmecOutputObject.evaluate_modB_objective()
             elif (which_objective == 'modB_vol'):
                 objective_function = vmecOutputObject.evaluate_modB_objective_volume()
+            elif (which_objective == 'axis_ripple'):
+                objective_function = vmecOutputObject.evaluate_ripple_objective(weight_function)
             return objective_function
         else:
             return 1e12
@@ -516,6 +631,9 @@ class vmecOptimization:
         elif (which_objective=='modB_vol'):
             if (self.verbose):
                 print("Evaluating modB_vol shape gradient.")
+        elif (which_objective=='axis_ripple'):
+            if (self.verbose):
+                print("Evaluating axis_ripple shape gradient.")
         else:
             raise ValueError("Error! vmec_shape_gradient called with incorrect value of"+\
                   which_objective)
@@ -677,6 +795,37 @@ class vmecOptimization:
                             (Bz_delta-Bz)*Bz)/delta
             shape_gradient = deltaB_dot_B/(self.vmecOutputObject.mu0) + \
                              weight_function(1)
+            
+        elif (which_objetive == 'axis_ripple'):
+            [Bx, By, Bz, theta_arclength] = \
+                vmecOutputObject.B_on_arclength_grid()
+            pres = vmecOutputObject.pres
+            pres_new = pres + \
+                delta*weight_function(self.vmecOutputObject.s_half)
+      
+            [error_code, vmecOutput_delta] = self.evaluate_animec(pres=pres_new)
+            if (error_code != 0):
+                raise RuntimeError('''Unable to evaluate VMEC equilibrium with pressure 
+                    perturbation in vmec_shaep_gradient.''')
+        
+            [Bx_delta, By_delta, Bz_delta, theta_arclength_delta] = \
+                vmecOutput_delta.B_on_arclength_grid()
+            for izeta in range(self.vmecOutputObject.nzeta):
+                f = interpolate.InterpolatedUnivariateSpline(\
+                            theta_arclength_delta[izeta,:],Bx_delta[izeta,:])
+                Bx_delta[izeta,:] = f(theta_arclength[izeta,:])
+                f = interpolate.InterpolatedUnivariateSpline(\
+                            theta_arclength_delta[izeta,:],By_delta[izeta,:])
+                By_delta[izeta,:] = f(theta_arclength[izeta,:])
+                f = interpolate.InterpolatedUnivariateSpline(\
+                            theta_arclength_delta[izeta,:],Bz_delta[izeta,:])
+                Bz_delta[izeta,:] = f(theta_arclength[izeta,:])
+
+            deltaB_dot_B = ((Bx_delta-Bx)*Bx + (By_delta-By)*By + \
+                            (Bz_delta-Bz)*Bz)/delta
+            shape_gradient = deltaB_dot_B/(self.vmecOutputObject.mu0) + \
+                             weight_function(1)         
+        
         elif (which_objective == 'area'):
             shape_gradient = \
                 vmecOutputObject.mean_curvature(vmecOutputObject.ns-1)   
@@ -799,6 +948,8 @@ class vmecOptimization:
                 print("Evaluating normalized_jacobian gradient.")
             elif (which_objective=='modB_vol'):
                 print("Evaluating modB_vol objective gradient.")
+            elif (which_objective=='axis_ripple'):
+                print("Evaluating axis_ripple objective gradient.")
         if (which_objective not in self.vmec_objectives):
             raise ValueError('''Error! evaluate_vmec_objective_grad called with incorrect \
                 value of which_objective.''')

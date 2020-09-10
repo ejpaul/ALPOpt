@@ -264,6 +264,7 @@ class vmecOptimization:
             vmecOutput_new = MPI.COMM_WORLD.bcast(vmecOutput_new,root=0)
             if (boundary is not None and update):
                 self.vmecOutputObject = vmecOutput_new
+                self.vmecInputObject = inputObject_new
         else:
             vmecOutput_new = None
 
@@ -589,7 +590,7 @@ class vmecOptimization:
         else:
             return 1e12
               
-    def vmec_shape_gradient(self,boundary=None,which_objective='iota',\
+    def vmec_shape_gradient(self,boundary=None,vmecOutputObject=None,which_objective='iota',\
                             weight_function=axis_weight,update=True,\
                             iota_target=None):
         """
@@ -640,13 +641,13 @@ class vmecOptimization:
                   which_objective)
       
         # Evaluate base equilibrium if necessary
-        if (boundary is not None and (boundary!=self.boundary_opt).all()):
+        if (vmecOutputObject is None and boundary is not None and (boundary!=self.boundary_opt).all()):
             [error_code, vmecOutputObject] = self.evaluate_vmec(\
                                                 boundary=boundary,update=update)
             if (error_code != 0):
                 raise RuntimeError('''Unable to evaluate base VMEC equilibrium in 
                     vmec_shape_gradient.''')
-        else:
+        elif (vmecOutputObject is None):
             vmecOutputObject = self.vmecOutputObject
 
         if (which_objective == 'iota'):
@@ -952,8 +953,8 @@ class vmecOptimization:
                 value of which_objective.''')
         rank = MPI.COMM_WORLD.Get_rank()
         # Evaluate base equilibrium if necessary
-        if ((boundary is not None and (boundary!=self.boundary_opt).any())\
-		or self.vmecOutputObject is None):
+        if (((boundary is not None and (boundary!=self.boundary_opt).any())\
+            or self.vmecOutputObject is None)):
             [error_code, vmecOutputObject] = self.evaluate_vmec(\
                                                 boundary=boundary,update=update)
             if (error_code != 0):
@@ -974,7 +975,7 @@ class vmecOptimization:
                                         self.xm_sensitivity,self.xn_sensitivity)
         else:
         # Compute gradient
-            shape_gradient = self.vmec_shape_gradient(\
+            shape_gradient = self.vmec_shape_gradient(vmecOutputObject=vmecOutputObject,\
                 which_objective=which_objective,\
                 weight_function=weight_function,update=update,\
                 iota_target=iota_target)

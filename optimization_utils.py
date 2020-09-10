@@ -96,7 +96,6 @@ class vmecOptimization:
         zbs_input = self.vmecInputObject.zbs
         xm_input = self.vmecInputObject.xm
         xn_input = self.vmecInputObject.xn
-        self.vmec_evaluated = False
 
         if (mpol_input<2):
             raise ValueError('Error! mpol must be > 1.')
@@ -160,22 +159,23 @@ class vmecOptimization:
             evaluations
 
         """
+        self.counter += 1
+        if (boundary is not None):
+            # Update boundary
+            self.update_boundary_opt(boundary)
         rank = MPI.COMM_WORLD.Get_rank()
-        if (rank == 0):
-            if (os.getcwd()!=self.directory):
-                if (self.verbose):
-                    print("Evaluate_vmec called from incorrect directory. Changing to "\
+        if (os.getcwd()!=self.directory):
+            if (self.verbose):
+                print("Evaluate_vmec called from incorrect directory. Changing to "\
                         +self.directory)
-                os.chdir(self.directory)
-            if (np.count_nonzero([It,pres,boundary] is not None)>1):
-                raise InputError('''evaluate_vmec called with more than one type of 
+            os.chdir(self.directory)
+        if (np.count_nonzero([It,pres,boundary] is not None)>1):
+            raise InputError('''evaluate_vmec called with more than one type of 
                   perturbation (boundary, It, pres). This behavior is not 
                   supported.''')
+        if (rank == 0):
             if (boundary is not None):
-            # Update equilibrium count
-                self.counter += 1
             # Update boundary
-                self.update_boundary_opt(boundary)
                 directory_name = self.name+"_"+str(self.counter)
             elif (It is not None):
                 directory_name = "delta_curr_"+str(self.counter)
@@ -248,15 +248,18 @@ class vmecOptimization:
 
         os.chdir(directory_name)
         exit_code = self.call_vmec(inputObject_new)
-      
+     
         if (exit_code == 0):
             # Read from new equilibrium
             outputFileName = "wout_"+input_file[6::]+".nc"
-            vmecOutput_new = \
-                VmecOutput(outputFileName,self.ntheta,self.nzeta)
+            if (rank == 0):
+                vmecOutput_new = \
+                    VmecOutput(outputFileName,self.ntheta,self.nzeta)
+            else:
+                vmecOutput_new = None
+            vmecOutput_new = MPI.COMM_WORLD.bcast(vmecOutput_new,root=0)
             if (boundary is not None and update):
                 self.vmecOutputObject = vmecOutput_new
-                self.vmec_evaluated = True
         else:
             vmecOutput_new = None
 
@@ -323,8 +326,6 @@ class vmecOptimization:
             self.counter += 1
             # Update boundary
             self.update_boundary_opt(boundary)
-            # VMEC has not been called with this boundary
-            self.vmec_evaluated = False
             directory_name = self.name+"_"+str(self.counter)
             if (self.verbose):
                 print("Creating new input object in "+directory_name)
@@ -653,8 +654,8 @@ class vmecOptimization:
                 vmecOutputObject.B_on_arclength_grid()
             pres = vmecOutputObject.pres
             pres_new = pres + \
-                delta*weight_function(self.vmecOutputObject.s_half)
-      
+                delta*weight_function(self.vmecOutputObject.s_half) \
+                /(self.vmecOutputObject.psi[-1])
             [error_code, vmecOutput_delta] = self.evaluate_vmec(pres=pres_new)
             if (error_code != 0):
                 raise RuntimeError('''Unable to evaluate VMEC equilibrium with pressure 
@@ -683,7 +684,7 @@ class vmecOptimization:
         elif (which_objective == 'modB_vol'):
             modB = vmecOutputObject.compute_modB(isurf=vmecOutputObject.ns, full=True)
             shape_gradient = 0.5 * modB * modB
-      
+     
         return shape_gradient
   
     def evaluate_input_objective_grad(self,boundary=None,\
@@ -715,13 +716,9 @@ class vmecOptimization:
             if (update==False):
                 boundary_old = np.copy(self.boundary_opt)
             # Update equilibrium count
-            rank = MPI.COMM_WORLD.Get_rank()
-            if (rank == 0):
-                self.counter += 1
+            self.counter += 1
             # Update boundary
             self.update_boundary_opt(boundary)
-            # VMEC has not been called with this boundary
-            self.vmec_evaluated = False
             directory_name = self.name+"_"+str(self.counter)
             # Make directory for VMEC evaluations
             try:
@@ -802,7 +799,7 @@ class vmecOptimization:
         if (which_objective not in self.vmec_objectives):
             raise ValueError('''Error! evaluate_vmec_objective_grad called with incorrect \
                 value of which_objective.''')
-
+        rank = MPI.COMM_WORLD.Get_rank()
         # Evaluate base equilibrium if necessary
         if ((boundary is not None and (boundary!=self.boundary_opt).any())\
 		or self.vmecOutputObject is None):
@@ -840,7 +837,7 @@ class vmecOptimization:
         else:
             raise RuntimeError('''Incorrect shape of derivatives encountered in 
                 evaluate_vmec_objective_grad.''')
-      
+       
         return np.squeeze(gradient)
   
     def test_jacobian(self,vmecInputObject=None):
@@ -914,27 +911,34 @@ class vmecOptimization:
         # r01_bad_value_flag=13
         # arz_bad_value_flag=14
         vmecInputObject.print_namelist()
+        MPI.COMM_WORLD.Barrier()
+        rank = MPI.COMM_WORLD.Get_rank()
         self.callVMEC_function(vmecInputObject)
         # Check for VMEC errors
         wout_filename = "wout_"+vmecInputObject.input_filename[6::]+".nc"
         MPI.COMM_WORLD.Barrier()
-        try:
-            f = netcdf.netcdf_file(wout_filename,'r',mmap=False)
-        except:
-            raise RuntimeError('Unable to read '+wout_filename+' in call_vmec.') 
-        error_code = f.variables["ier_flag"][()]
-        # Check if tolerances were met
-        ftolv = f.variables["ftolv"][()]
-        fsqr = f.variables["fsqr"][()]
-        fsqz = f.variables["fsqz"][()]
-        fsql = f.variables["fsql"][()]
-        if (fsqr>ftolv or fsqz>ftolv or fsql>ftolv):
-            error_code = 2
+        if (rank == 0):
+            try:
+                f = netcdf.netcdf_file(wout_filename,'r',mmap=False)
+                error_code = f.variables["ier_flag"][()]
+                # Check if tolerances were met
+                ftolv = f.variables["ftolv"][()]
+                fsqr = f.variables["fsqr"][()]
+                fsqz = f.variables["fsqz"][()]
+                fsql = f.variables["fsql"][()]
+                if (fsqr>ftolv or fsqz>ftolv or fsql>ftolv):
+                    error_code = 2
+            except:
+                print('Unable to read '+wout_filename+' in call_vmec.')
+                error_code = 15
+                #raise RuntimeError('Unable to read '+wout_filename+' in call_vmec.') 
+        else:
+            error_code = None
+        error_code = MPI.COMM_WORLD.bcast(error_code,root=0)
     
         if (error_code != 0):
             if (self.verbose):
                 print('VMEC completed with error code '+str(error_code))
-    
         return error_code
   
     def optimization_plot(self,which_objective,weight=axis_weight,objective_type='vmec'):

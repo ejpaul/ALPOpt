@@ -448,7 +448,7 @@ class GradOptimizer:
             if (objective_value != 1e12):
                 grad[:] = self.objectives_grad_fun(x)
             else:
-                grad[:] = np.zeros(self.nparameters)
+                grad[:] = 1e12*np.ones(self.nparameters)
         return objective_value
     
     def nlopt_ineq_m(self, result, x, grad):

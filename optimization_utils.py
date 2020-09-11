@@ -430,7 +430,7 @@ class vmecOptimization:
             raise InputError('''Error! evaluate_input_objective called with incorrect boundary 
                 shape.''')
       
-        if ((boundary != self.boundary_opt).any()):
+        if ((boundary != self.boundary_opt).any() or self.vmecInputObject is None):
             # Save old boundary if update=False
             if (update==False):
                 boundary_old = np.copy(self.boundary_opt)

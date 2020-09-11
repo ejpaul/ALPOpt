@@ -1004,23 +1004,24 @@ class vmecOptimization:
         else:
             return True
     
-    def test_boundary(self,vmecInputObject=None):
-        if (vmecInputObject is None):
-            vmecInputObject = self.vmecInputObject
-        [X,Y,Z,R] = vmecInputObject.position()
-        if np.any(R<0):
-            return True
-        # Iterate over cross-sections
-        for izeta in range(self.nzeta):
-            if (self_intersect(R[izeta,:],Z[izeta,:])):
-                return True
-        return False
+#    def test_boundary(self,vmecInputObject=None):
+#        if (vmecInputObject is None):
+#            vmecInputObject = self.vmecInputObject
+#        [X,Y,Z,R] = vmecInputObject.position()
+#        if np.any(R<0):
+#            return True
+#        # Iterate over cross-sections
+#        for izeta in range(self.nzeta):
+#            if (self_intersect(R[izeta,:],Z[izeta,:])):
+#                return True
+#        return False
   
     def call_vmec(self,vmecInputObject):
         if (vmecInputObject is None):
             vmecInputObject = copy.deepcopy(vmecInputObject)
     
-        intersecting = self.test_boundary(vmecInputObject)
+        intersecting = vmecInputObject.test_boundary()
+#        intersecting = self.test_boundary(vmecInputObject)
         if (intersecting):
             # print input namelist for the record
             vmecInputObject.print_namelist()

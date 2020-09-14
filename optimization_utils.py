@@ -29,51 +29,57 @@ class vmecOptimization:
     ...
     Attributes
     ---------
-    mmax_sensitivity (int) : maximum poloidal mode number of boundary to 
-        optimize 
-    nmax_sensitivity (int) : maximum toroidal mode number of boundary to 
+    mmax_sensitivity (int) : maximum poloidal mode number of boundary to
+        optimize
+    nmax_sensitivity (int) : maximum toroidal mode number of boundary to
         optimize
     mnmax_sensitivity (int) : total number of boundary modes to optimize
     xm_sensitivity (int array) : poloidal mode numbers of boundary to optimize
     xn_sensitivity (int array) : toroidal mode numbers of boundary to optimize
-    callVMEC_function (function) : takes vmecInputFilename (str) as sole input 
-        argument and returns runs VMEC with given Fortran namelist. See 
+    callVMEC_function (function) : takes vmecInputFilename (str) as sole input
+        argument and returns runs VMEC with given Fortran namelist. See
         callVMEC.py for examples.
-    counter (int) : Used for naming of directories for labeling VMEC function 
-        evaluations. Counter is incremented when a new boundary is evaluated. 
-    name (str) : Name used as prefix for directory names of new VMEC 
+    counter (int) : Used for naming of directories for labeling VMEC function
+        evaluations. Counter is incremented when a new boundary is evaluated.
+    name (str) : Name used as prefix for directory names of new VMEC
         evaluations.
-    vmecInputFilename (str) : Fortran namelist for initial equilibrium 
-        evaluation. This namelist will be modified as the boundary is modified. 
-    directory (str) : Home directory for optimization. 
+    vmecInputFilename (str) : Fortran namelist for initial equilibrium
+        evaluation. This namelist will be modified as the boundary is modified.
+    directory (str) : Home directory for optimization.
     mpol (int) : maximum poloidal mode number for VMEC calculations
     ntor (int) : maximum toroidal mode number for VMEC calculations
     mnmax (int) :  total number of modes for VMEC calculations
     xm (int array) : poloidal mode numbers for VMEC calculations
     xn (int array) : toroidal mode numbers for VMEc calculations
     boundary (float array) : current set of boundary harmonics
-    boundary_opt (float array) : current set of boundary harmonics which are 
+    boundary_opt (float array) : current set of boundary harmonics which are
         being optimized (subset of boundary)
-    vmecOutputObject (vmecOutput) : instance of object corresponding to most 
+    vmecOutputObject (vmecOutput) : instance of object corresponding to most
         recent equilibrium evaluation
-    delta (float) : defines size of current perturbation for adjoint shape 
+    delta (float) : defines size of current perturbation for adjoint shape
         gradient calculation
 
     """
-    def __init__(self,vmecInputFilename,mmax_sensitivity,
-             nmax_sensitivity,callVMEC_function,name,delta_curr=10,
-             delta_pres=10,woutFilename=None,ntheta=100,nzeta=100,
-             minCurvatureRadius=0.3,verbose=True,callANIMEC_function=None):
-        self.mmax_sensitivity = mmax_sensitivity
-        self.nmax_sensitivity = nmax_sensitivity
-        [mnmax_sensitivity,xm_sensitivity,xn_sensitivity] = \
-            init_modes(mmax_sensitivity,nmax_sensitivity)
+    def __init__(self,vmecInputFilename,name='optimization',\
+             callVMEC_function=None,mmax_sensitivity=0,nmax_sensitivity=0,\
+             delta_curr=10,delta_pres=10,woutFilename=None,ntheta=100,nzeta=100,\
+             minCurvatureRadius=0.3,verbose=True,callANIMEC_function=None,
+             xn_sensitivity=None,xm_sensitivity=None):
+        if (xn_sensitivity is None or xm_sensitivity is None):
+            [mnmax_sensitivity,xm_sensitivity,xn_sensitivity] = \
+                init_modes(mmax_sensitivity,nmax_sensitivity)
+        else:
+            assert(len(xn_sensitivity)==len(xm_sensitivity))
+            self.mmax_sensitivity = np.max(xm_sensitivity)
+            self.nmax_sensitivity = np.max(xn_sensitivity)
+            self.mnmax_sensitivity = len(xn_sensitivity)
+
         self.mnmax_sensitivity = mnmax_sensitivity
         self.xm_sensitivity = xm_sensitivity
         self.xn_sensitivity = xn_sensitivity
         self.callVMEC_function = callVMEC_function
         self.callANIMEC_function = callANIMEC_function
-        self.counter = 0 # Counts number of function evals (used for 
+        self.counter = 0 # Counts number of function evals (used for
             # naming directories)
         self.name = name # Name used for directories
         self.vmecInputFilename = vmecInputFilename
@@ -104,13 +110,13 @@ class vmecOptimization:
         if (mpol_input<2):
             raise ValueError('Error! mpol must be > 1.')
 
-        # mpol, ntor for calculaitons must be large enough for sensitivity 
+        # mpol, ntor for calculaitons must be large enough for sensitivity
             #required
         self.mmax = max(mmax_sensitivity,mpol_input-1)
         self.nmax = max(nmax_sensitivity,ntor_input)
         [self.mnmax,self.xm,self.xn] = init_modes(self.mmax,self.nmax)
-        [mnmax_sensitivity,xm_sensitivity,xn_sensitivity] = \
-            init_modes(mmax_sensitivity,nmax_sensitivity)
+        # [mnmax_sensitivity,xm_sensitivity,xn_sensitivity] = \
+        #     init_modes(mmax_sensitivity,nmax_sensitivity)
 
         # Update input object with required mpol and ntor
         self.vmecInputObject.update_modes(self.mmax+1,self.nmax)
@@ -130,7 +136,7 @@ class vmecOptimization:
             if (any(cond)):
                 rmnc_opt[cond] = rbc_input[imn]
                 zmns_opt[cond] = zbs_input[imn]
-        self.boundary = np.hstack((rmnc,zmns))   
+        self.boundary = np.hstack((rmnc,zmns))
         self.boundary_opt = np.hstack((rmnc_opt,zmns_opt[1::]))
         self.norm_normal = None
 
@@ -138,28 +144,28 @@ class vmecOptimization:
 
         if (woutFilename is not None):
             self.vmecOutputObject = VmecOutput(woutFilename,self.ntheta,
-                                                   self.nzeta)  
-      
+                                                   self.nzeta)
+
     def evaluate_vmec(self,boundary=None,It=None,pres=None,update=True):
         """
-        Evaluates VMEC equilibrium with specified boundary or toroidal current 
+        Evaluates VMEC equilibrium with specified boundary or toroidal current
             profile update
 
-        boundary and It should not be specified simultaneously. 
+        boundary and It should not be specified simultaneously.
         If neither are specified, then an exception is raised.
 
         Parameters
         ----------
-        boundary (float array) : values of boundary harmonics for VMEC 
+        boundary (float array) : values of boundary harmonics for VMEC
             evaluations
-        It (float array) : value of toroidal current on half grid VMEC mesh for 
+        It (float array) : value of toroidal current on half grid VMEC mesh for
             prescription of profile with "ac_aux_f" Fortran namelist variable
-        update (bool) : if True, self.vmecOutputObject is updated and boundary 
+        update (bool) : if True, self.vmecOutputObject is updated and boundary
             is assigned to self.boundary_opt
 
         Returns
         ----------
-        vmecOutput_new (vmecOutput) : object corresponding to output of VMEC 
+        vmecOutput_new (vmecOutput) : object corresponding to output of VMEC
             evaluations
 
         """
@@ -174,8 +180,8 @@ class vmecOptimization:
                         +self.directory)
             os.chdir(self.directory)
         if (np.count_nonzero([It,pres,boundary] is not None)>1):
-            raise InputError('''evaluate_vmec called with more than one type of 
-                  perturbation (boundary, It, pres). This behavior is not 
+            raise InputError('''evaluate_vmec called with more than one type of
+                  perturbation (boundary, It, pres). This behavior is not
                   supported.''')
         if (rank == 0):
             if (boundary is not None):
@@ -188,7 +194,7 @@ class vmecOptimization:
             elif (self.counter == 0):
                 directory_name = self.name+"_"+str(self.counter)
             else:
-                raise RuntimeError('''Error! evaluate_vmec called when equilibrium does not 
+                raise RuntimeError('''Error! evaluate_vmec called when equilibrium does not
                   need to be evaluated.''')
             # Make directory for VMEC evaluations
             try:
@@ -200,14 +206,14 @@ class vmecOptimization:
                           ' already exists. Contents may be overwritten.')
                     raise
                 pass
-    
+
             input_file = "input."+directory_name
 
             inputObject_new = copy.deepcopy(self.vmecInputObject)
             inputObject_new.input_filename = input_file
             inputObject_new.ntor = self.nmax
             inputObject_new.mpol = self.mmax+1
-            # Edit input filename with boundary 
+            # Edit input filename with boundary
             if (It is not None):
                 curtor = 1.5*It[-1] - 0.5*It[-2]
                 s_half = self.vmecOutputObject.s_half
@@ -243,16 +249,16 @@ class vmecOptimization:
         else:
             inputObject_new = None
             directory_name = None
-            input_file = None   
-      
+            input_file = None
+
         # Call VMEC with revised input file
-        inputObject_new = MPI.COMM_WORLD.bcast(inputObject_new,root=0)      
+        inputObject_new = MPI.COMM_WORLD.bcast(inputObject_new,root=0)
         directory_name = MPI.COMM_WORLD.bcast(directory_name,root=0)
         input_file = MPI.COMM_WORLD.bcast(input_file,root=0)
 
         os.chdir(directory_name)
         exit_code = self.call_vmec(inputObject_new)
-     
+
         if (exit_code == 0):
             # Read from new equilibrium
             outputFileName = "wout_"+input_file[6::]+".nc"
@@ -270,27 +276,27 @@ class vmecOptimization:
 
         os.chdir("..")
         return exit_code, vmecOutput_new
-    
+
     def evaluate_animec(self,boundary=None,pres=None):
         """
-        Evaluates ANIVMEC equilibrium with specified boundary pressure 
+        Evaluates ANIVMEC equilibrium with specified boundary pressure
             profile update
 
-        boundary and pres should not be specified simultaneously. 
+        boundary and pres should not be specified simultaneously.
         If neither are specified, then an exception is raised.
 
         Parameters
         ----------
-        boundary (float array) : values of boundary harmonics for VMEC 
+        boundary (float array) : values of boundary harmonics for VMEC
             evaluations
-        pres (float array) : value of hot pressure on half grid VMEC mesh for 
+        pres (float array) : value of hot pressure on half grid VMEC mesh for
             prescription of profile with "ah_aux_f" Fortran namelist variable
 
         Returns
         ----------
         vmecOutput_new (vmecOutput) : object corresponding to output of ANIMEC
             evaluations
-        """        
+        """
         rank = MPI.COMM_WORLD.Get_rank()
         if (rank == 0):
             if (os.getcwd()!=self.directory):
@@ -299,8 +305,8 @@ class vmecOptimization:
                         +self.directory)
                 os.chdir(self.directory)
             if (np.count_nonzero([pres,boundary] is not None)>1):
-                raise InputError('''evaluate_animec called with more than one type of 
-                  perturbation (boundary, pres). This behavior is not 
+                raise InputError('''evaluate_animec called with more than one type of
+                  perturbation (boundary, pres). This behavior is not
                   supported.''')
             if (boundary is not None):
             # Update equilibrium count
@@ -313,7 +319,7 @@ class vmecOptimization:
             elif (self.counter == 0):
                 directory_name = self.name+"_"+str(self.counter)
             else:
-                raise RuntimeError('''Error! evaluate_animec called when 
+                raise RuntimeError('''Error! evaluate_animec called when
                   equilibrium does not need to be evaluated.''')
             # Make directory for ANIMEC evaluations
             try:
@@ -325,14 +331,14 @@ class vmecOptimization:
                           ' already exists. Contents may be overwritten.')
                     raise
                 pass
-    
+
             input_file = "input."+directory_name
 
             inputObject_new = copy.deepcopy(self.vmecInputObject)
             inputObject_new.input_filename = input_file
             inputObject_new.ntor = self.nmax
             inputObject_new.mpol = self.mmax+1
-            # Edit input filename with boundary 
+            # Edit input filename with boundary
             if (pres is not None):
                 s_half = self.vmecOutputObject.s_half
                 if (self.vmecOutputObject.ns>101):
@@ -354,16 +360,16 @@ class vmecOptimization:
         else:
             inputObject_new = None
             directory_name = None
-            input_file = None   
-      
+            input_file = None
+
         # Call VMEC with revised input file
-        inputObject_new = MPI.COMM_WORLD.bcast(inputObject_new,root=0)      
+        inputObject_new = MPI.COMM_WORLD.bcast(inputObject_new,root=0)
         directory_name = MPI.COMM_WORLD.bcast(directory_name,root=0)
         input_file = MPI.COMM_WORLD.bcast(input_file,root=0)
 
         os.chdir(directory_name)
         exit_code = self.call_vmec(inputObject_new)
-      
+
         if (exit_code == 0):
             # Read from new equilibrium
             outputFileName = "wout_"+input_file[6::]+".nc"
@@ -377,14 +383,14 @@ class vmecOptimization:
 
         os.chdir("..")
         return exit_code, vmecOutput_new
-    
+
     def update_boundary_opt(self,boundary_opt_new):
         """
-        Updates boundary harmonics at new evaluation point 
+        Updates boundary harmonics at new evaluation point
 
         Parameters
         ----------
-        boundary_opt_new (float array) : new boundary to evaluate 
+        boundary_opt_new (float array) : new boundary to evaluate
             (same size as self.boundary_opt)
 
         """
@@ -403,7 +409,7 @@ class vmecOptimization:
                 rmnc_new[cond] = rmnc_opt_new[imn]
                 zmns_new[cond] = zmns_opt_new[imn]
         self.boundary = np.hstack((rmnc_new,zmns_new))
-  
+
     def evaluate_input_objective(self,boundary=None,which_objective='volume',\
                                  update=True,ntheta=None,nzeta=None):
         if (self.verbose):
@@ -422,14 +428,14 @@ class vmecOptimization:
             elif (which_objective=='summed_proximity'):
                 print("Evaluating summed proximity objective.")
         if (which_objective not in self.input_objectives):
-            raise ValueError('''incorrect value of which_objective in 
+            raise ValueError('''incorrect value of which_objective in
                   evaluate_input_objective.''')
         if (boundary is None):
             boundary = self.boundary_opt
         if (np.shape(boundary)!=np.shape(self.boundary_opt)):
-            raise InputError('''Error! evaluate_input_objective called with incorrect boundary 
+            raise InputError('''Error! evaluate_input_objective called with incorrect boundary
                 shape.''')
-      
+
         if ((boundary != self.boundary_opt).any() or self.vmecInputObject is None):
             # Save old boundary if update=False
             if (update==False):
@@ -460,7 +466,7 @@ class vmecOptimization:
             os.chdir(directory_name)
             vmecInputObject.print_namelist()
             os.chdir('..')
-            # Reset old boundary 
+            # Reset old boundary
             if (update==False):
                 self.update_boundary_opt(boundary_old)
             else:
@@ -483,7 +489,7 @@ class vmecOptimization:
             objective_function = vmecInputObject.summed_proximity(ntheta=ntheta,\
                                                                   nzeta=nzeta)
         return objective_function
-  
+
     # Call VMEC with boundary specified by boundaryObjective to evaluate which_objective
     def evaluate_vmec_objective(self,boundary=None,which_objective='iota',
                                 weight_function=axis_weight,update=True,\
@@ -493,13 +499,13 @@ class vmecOptimization:
 
         Parameters
         ----------
-        boundary (float array) : new boundary to evaluate. If None, objective 
+        boundary (float array) : new boundary to evaluate. If None, objective
             will be computed from self.vmecOutputObject
 
         Returns
         ----------
-        objective function (float) : value of objective function defined through 
-            which_objective and weight_function. If VMEC completes with an 
+        objective function (float) : value of objective function defined through
+            which_objective and weight_function. If VMEC completes with an
             error, the value of the objective function is set to 1e12.
         """
         if (self.verbose):
@@ -528,7 +534,7 @@ class vmecOptimization:
             elif (which_objective=='axis_ripple'):
                 print("Evaluating axis_ripple objective gradient.")
         if (which_objective not in self.vmec_objectives):
-            raise ValueError('''Error! evaluate_vmec called with incorrect value of 
+            raise ValueError('''Error! evaluate_vmec called with incorrect value of
                   which_objective''')
         if (boundary is None):
             boundary = self.boundary_opt
@@ -544,15 +550,15 @@ class vmecOptimization:
             [error_code,vmecOutputObject] = self.evaluate_vmec(\
                                                 boundary=boundary,update=update)
             if (error_code != 0 and self.verbose):
-                print('''VMEC returned with an error when evaluating new 
+                print('''VMEC returned with an error when evaluating new
                     boundary in evaluate_vmec_objective.''')
                 print('Objective function will be set to 1e12')
         else:
             vmecOutputObject = self.vmecOutputObject
-        # Reset old boundary 
+        # Reset old boundary
         if (update==False):
             self.update_boundary_opt(boundary_old)
-    
+
         if (error_code == 0):
             if (which_objective == 'iota'):
                 objective_function = \
@@ -564,7 +570,7 @@ class vmecOptimization:
                     vmecOutputObject.evaluate_iota_target_objective(weight_function,iota_target)
             elif (which_objective == 'iota_prime'):
                 objective_function = \
-                    vmecOutputObject.evaluate_iota_prime_objective(weight_function)                
+                    vmecOutputObject.evaluate_iota_prime_objective(weight_function)
             elif (which_objective == 'well'):
                 objective_function = \
                     vmecOutputObject.evaluate_well_objective(weight_function)
@@ -589,22 +595,22 @@ class vmecOptimization:
             return objective_function
         else:
             return 1e12
-              
+
     def vmec_shape_gradient(self,boundary=None,vmecOutputObject=None,which_objective='iota',\
                             weight_function=axis_weight,update=True,\
                             iota_target=None):
         """
-        Evaluates shape gradient for objective function 
+        Evaluates shape gradient for objective function
 
         Parameters
         ----------
-        boundary (float array) : new boundary to evaluate. If None, objective 
+        boundary (float array) : new boundary to evaluate. If None, objective
             will be computed from self.vmecOutputObject
 
         Returns
         ----------
-        objective function (float) : value of objective function defined through 
-            which_objective and weight_function. If VMEC completes with an 
+        objective function (float) : value of objective function defined through
+            which_objective and weight_function. If VMEC completes with an
             error, the value of the objective function is set to 1e12.
         """
         if (which_objective=='iota'):
@@ -639,13 +645,13 @@ class vmecOptimization:
         else:
             raise ValueError("Error! vmec_shape_gradient called with incorrect value of"+\
                   which_objective)
-      
+
         # Evaluate base equilibrium if necessary
         if (vmecOutputObject is None and boundary is not None and (boundary!=self.boundary_opt).all()):
             [error_code, vmecOutputObject] = self.evaluate_vmec(\
                                                 boundary=boundary,update=update)
             if (error_code != 0):
-                raise RuntimeError('''Unable to evaluate base VMEC equilibrium in 
+                raise RuntimeError('''Unable to evaluate base VMEC equilibrium in
                     vmec_shape_gradient.''')
         elif (vmecOutputObject is None):
             vmecOutputObject = self.vmecOutputObject
@@ -659,44 +665,7 @@ class vmecOptimization:
 
             [error_code, vmecOutput_delta] = self.evaluate_vmec(It=It_new)
             if (error_code != 0):
-                raise RuntimeError('''Unable to evaluate VMEC equilibrium with current 
-                    perturbation in vmec_shaep_gradient.''')
-
-            [Bx_delta, By_delta, Bz_delta, theta_arclength_delta] = \
-                vmecOutput_delta.B_on_arclength_grid()
-            for izeta in range(self.vmecOutputObject.nzeta):
-                f = interpolate.InterpolatedUnivariateSpline(\
-                            theta_arclength_delta[izeta,:],Bx_delta[izeta,:])
-                Bx_delta[izeta,:] = f(theta_arclength[izeta,:])
-                f = interpolate.InterpolatedUnivariateSpline(\
-                            theta_arclength_delta[izeta,:],By_delta[izeta,:])
-                By_delta[izeta,:] = f(theta_arclength[izeta,:])
-                f = interpolate.InterpolatedUnivariateSpline(\
-                            theta_arclength_delta[izeta,:],Bz_delta[izeta,:])
-                Bz_delta[izeta,:] = f(theta_arclength[izeta,:])
-
-            deltaB_dot_B = ((Bx_delta-Bx)*Bx + (By_delta-By)*By + \
-                            (Bz_delta-Bz)*Bz)/delta
-
-            shape_gradient = deltaB_dot_B/(2*np.pi*self.vmecOutputObject.mu0)   
-        elif (which_objective == 'iota_target'):
-            [Bx, By, Bz, theta_arclength] = \
-                vmecOutputObject.B_on_arclength_grid()
-            It_half = vmecOutputObject.compute_current()
-            
-            weight_half = weight_function(self.vmecOutputObject.s_half)
-            iota = self.vmecOutputObject.iota
-            if (iota_target is None):
-                iota_target = np.zeros(np.shape(self.vmecOutputObject.s_half))
-            
-            perturbation = weight_half*(iota-iota_target)\
-                /(self.vmecOutputObject.psi[-1]*self.vmecOutputObject.sign_jac)
-            
-            It_new = It_half + delta*perturbation
-
-            [error_code, vmecOutput_delta] = self.evaluate_vmec(It=It_new)
-            if (error_code != 0):
-                raise RuntimeError('''Unable to evaluate VMEC equilibrium with current 
+                raise RuntimeError('''Unable to evaluate VMEC equilibrium with current
                     perturbation in vmec_shaep_gradient.''')
 
             [Bx_delta, By_delta, Bz_delta, theta_arclength_delta] = \
@@ -716,12 +685,49 @@ class vmecOptimization:
                             (Bz_delta-Bz)*Bz)/delta
 
             shape_gradient = deltaB_dot_B/(2*np.pi*self.vmecOutputObject.mu0)
-            
+        elif (which_objective == 'iota_target'):
+            [Bx, By, Bz, theta_arclength] = \
+                vmecOutputObject.B_on_arclength_grid()
+            It_half = vmecOutputObject.compute_current()
+
+            weight_half = weight_function(self.vmecOutputObject.s_half)
+            iota = self.vmecOutputObject.iota
+            if (iota_target is None):
+                iota_target = np.zeros(np.shape(self.vmecOutputObject.s_half))
+
+            perturbation = weight_half*(iota-iota_target)\
+                /(self.vmecOutputObject.psi[-1]*self.vmecOutputObject.sign_jac)
+
+            It_new = It_half + delta*perturbation
+
+            [error_code, vmecOutput_delta] = self.evaluate_vmec(It=It_new)
+            if (error_code != 0):
+                raise RuntimeError('''Unable to evaluate VMEC equilibrium with current
+                    perturbation in vmec_shaep_gradient.''')
+
+            [Bx_delta, By_delta, Bz_delta, theta_arclength_delta] = \
+                vmecOutput_delta.B_on_arclength_grid()
+            for izeta in range(self.vmecOutputObject.nzeta):
+                f = interpolate.InterpolatedUnivariateSpline(\
+                            theta_arclength_delta[izeta,:],Bx_delta[izeta,:])
+                Bx_delta[izeta,:] = f(theta_arclength[izeta,:])
+                f = interpolate.InterpolatedUnivariateSpline(\
+                            theta_arclength_delta[izeta,:],By_delta[izeta,:])
+                By_delta[izeta,:] = f(theta_arclength[izeta,:])
+                f = interpolate.InterpolatedUnivariateSpline(\
+                            theta_arclength_delta[izeta,:],Bz_delta[izeta,:])
+                Bz_delta[izeta,:] = f(theta_arclength[izeta,:])
+
+            deltaB_dot_B = ((Bx_delta-Bx)*Bx + (By_delta-By)*By + \
+                            (Bz_delta-Bz)*Bz)/delta
+
+            shape_gradient = deltaB_dot_B/(2*np.pi*self.vmecOutputObject.mu0)
+
         elif (which_objective == 'iota_prime'):
             [Bx, By, Bz, theta_arclength] = \
                 vmecOutputObject.B_on_arclength_grid()
             It_half = vmecOutputObject.compute_current()
-            
+
             weight_half = weight_function(self.vmecOutputObject.s_half)
             weight_full = weight_function(self.vmecOutputObject.s_full)
             # Derivative of weight function on half grid
@@ -740,15 +746,15 @@ class vmecOptimization:
             # Second derivative on half grid
             iota_prime_prime_half = (iota_prime_full[1::]-iota_prime_full[0:-1])\
                                     /self.vmecOutputObject.ds
-            
+
             perturbation = -(iota_prime_prime_half*weight_half \
                             + iota_prime_half*weight_prime)
-            
+
             It_new = It_half + delta*perturbation
 
             [error_code, vmecOutput_delta] = self.evaluate_vmec(It=It_new)
             if (error_code != 0):
-                raise RuntimeError('''Unable to evaluate VMEC equilibrium with current 
+                raise RuntimeError('''Unable to evaluate VMEC equilibrium with current
                     perturbation in vmec_shaep_gradient.''')
 
             [Bx_delta, By_delta, Bz_delta, theta_arclength_delta] = \
@@ -777,9 +783,9 @@ class vmecOptimization:
                 /(self.vmecOutputObject.psi[-1])
             [error_code, vmecOutput_delta] = self.evaluate_vmec(pres=pres_new)
             if (error_code != 0):
-                raise RuntimeError('''Unable to evaluate VMEC equilibrium with pressure 
+                raise RuntimeError('''Unable to evaluate VMEC equilibrium with pressure
                     perturbation in vmec_shaep_gradient.''')
-        
+
             [Bx_delta, By_delta, Bz_delta, theta_arclength_delta] = \
                 vmecOutput_delta.B_on_arclength_grid()
             for izeta in range(self.vmecOutputObject.nzeta):
@@ -797,19 +803,19 @@ class vmecOptimization:
                             (Bz_delta-Bz)*Bz)/delta
             shape_gradient = deltaB_dot_B/(self.vmecOutputObject.mu0) + \
                              weight_function(1)
-            
+
         elif (which_objetive == 'axis_ripple'):
             [Bx, By, Bz, theta_arclength] = \
                 vmecOutputObject.B_on_arclength_grid()
             pres = vmecOutputObject.pres
             pres_new = pres + \
                 delta*weight_function(self.vmecOutputObject.s_half)
-      
+
             [error_code, vmecOutput_delta] = self.evaluate_animec(pres=pres_new)
             if (error_code != 0):
-                raise RuntimeError('''Unable to evaluate VMEC equilibrium with pressure 
+                raise RuntimeError('''Unable to evaluate VMEC equilibrium with pressure
                     perturbation in vmec_shaep_gradient.''')
-        
+
             [Bx_delta, By_delta, Bz_delta, theta_arclength_delta] = \
                 vmecOutput_delta.B_on_arclength_grid()
             for izeta in range(self.vmecOutputObject.nzeta):
@@ -826,17 +832,17 @@ class vmecOptimization:
             deltaB_dot_B = ((Bx_delta-Bx)*Bx + (By_delta-By)*By + \
                             (Bz_delta-Bz)*Bz)/delta
             shape_gradient = deltaB_dot_B/(self.vmecOutputObject.mu0) + \
-                             weight_function(1)         
-        
+                             weight_function(1)
+
         elif (which_objective == 'area'):
             shape_gradient = \
-                vmecOutputObject.mean_curvature(vmecOutputObject.ns-1)   
+                vmecOutputObject.mean_curvature(vmecOutputObject.ns-1)
         elif (which_objective == 'modB_vol'):
             modB = vmecOutputObject.compute_modB(isurf=vmecOutputObject.ns, full=True)
             shape_gradient = 0.5 * modB * modB
-     
+
         return shape_gradient
-  
+
     def evaluate_input_objective_grad(self,boundary=None,\
                                       which_objective='volume',update=True,\
                                       ntheta=None,nzeta=None):
@@ -854,13 +860,13 @@ class vmecOptimization:
             elif (which_objective=='summed_proximity'):
                 print("Evaluating summed proximity objective gradient.")
         if (which_objective not in self.input_objectives):
-            raise ValueError('''Error! evaluate_input_objective_grad called with incorrect 
+            raise ValueError('''Error! evaluate_input_objective_grad called with incorrect
                 value of which_objective.''')
-      
+
         # Get new input object if necessary
         if (boundary is not None and (boundary!=self.boundary_opt).any()):
             if (np.shape(boundary)!=np.shape(self.boundary_opt)):
-                raise ValueError('''Error! evaluate_vmec called with incorrect boundary 
+                raise ValueError('''Error! evaluate_vmec called with incorrect boundary
                     shape.''')
             # Save old boundary if update=False
             if (update==False):
@@ -890,7 +896,7 @@ class vmecOptimization:
                 self.update_boundary_opt(boundary_old)
         else:
             vmecInputObject = self.vmecInputObject
-      
+
         if (which_objective == 'jacobian'):
             [dfdrmnc,dfdzmns] = vmecInputObject.jacobian_derivatives(\
                                         self.xm_sensitivity,self.xn_sensitivity)
@@ -918,8 +924,8 @@ class vmecOptimization:
             gradient = np.vstack((dfdrmnc,dfdzmns[1::,...]))
 
         return np.squeeze(gradient)
-  
-    # Call VMEC with boundary specified by boundaryObjective to evaluate 
+
+    # Call VMEC with boundary specified by boundaryObjective to evaluate
     # which_objective and compute gradient
     # If boundary is not specified, boundary will not be updated
     def evaluate_vmec_objective_grad(self,boundary=None,which_objective='iota',\
@@ -981,17 +987,18 @@ class vmecOptimization:
                 iota_target=iota_target)
             [dfdrmnc,dfdzmns,xm_sensitivity,xn_sensitivity] = \
                 parameter_derivatives(shape_gradient,vmecOutputObject,\
-                self.mmax_sensitivity,self.nmax_sensitivity)
+                xm_sensitivity=self.xm_sensitivity,\
+                xn_sensitivity=self.xn_sensitivity)
         if (dfdrmnc.ndim==1):
             gradient = np.hstack((dfdrmnc,dfdzmns[1::]))
         elif (dfdrmnc.ndim==3):
             gradient = np.vstack((dfdrmnc,dfdzmns[1::,:,:]))
         else:
-            raise RuntimeError('''Incorrect shape of derivatives encountered in 
+            raise RuntimeError('''Incorrect shape of derivatives encountered in
                 evaluate_vmec_objective_grad.''')
-       
+
         return np.squeeze(gradient)
-  
+
     def test_jacobian(self,vmecInputObject=None):
         if (vmecInputObject is None):
             vmecInputObject = self.vmecInputObject
@@ -1003,7 +1010,7 @@ class vmecOptimization:
             return False
         else:
             return True
-    
+
 #    def test_boundary(self,vmecInputObject=None):
 #        if (vmecInputObject is None):
 #            vmecInputObject = self.vmecInputObject
@@ -1015,18 +1022,18 @@ class vmecOptimization:
 #            if (self_intersect(R[izeta,:],Z[izeta,:])):
 #                return True
 #        return False
-  
+
     def call_vmec(self,vmecInputObject):
         if (vmecInputObject is None):
             vmecInputObject = copy.deepcopy(vmecInputObject)
-    
+
         intersecting = vmecInputObject.test_boundary()
 #        intersecting = self.test_boundary(vmecInputObject)
         if (intersecting):
             # print input namelist for the record
             vmecInputObject.print_namelist()
             if (self.verbose):
-                print('''Requested boundary is self-intersecting. 
+                print('''Requested boundary is self-intersecting.
                     I will not call VMEC.''')
             return 16
         else:
@@ -1035,7 +1042,7 @@ class vmecOptimization:
                 # print input namelist for the record
                 vmecInputObject.print_namelist()
                 if (self.verbose):
-                    print('''Requested boundary has ill-conditioned Jacobian. 
+                    print('''Requested boundary has ill-conditioned Jacobian.
                         I will not call VMEC.''')
                 return 15
             else:
@@ -1048,8 +1055,8 @@ class vmecOptimization:
                     if (return_value == -1):
                         # print input namelist for the record
                         vmecInputObject.print_namelist()
-                        error_code = -1 
-                
+                        error_code = -1
+
         # VMEC error codes (from vmec_params.f) :
         # norm_term_flag=0
         # bad_jacobian_flag=1
@@ -1084,16 +1091,16 @@ class vmecOptimization:
             except:
                 print('Unable to read '+wout_filename+' in call_vmec.')
                 error_code = 15
-                #raise RuntimeError('Unable to read '+wout_filename+' in call_vmec.') 
+                #raise RuntimeError('Unable to read '+wout_filename+' in call_vmec.')
         else:
             error_code = None
         error_code = MPI.COMM_WORLD.bcast(error_code,root=0)
-    
+
         if (error_code != 0):
             if (self.verbose):
                 print('VMEC completed with error code '+str(error_code))
         return error_code
-  
+
     def optimization_plot(self,which_objective,weight=axis_weight,objective_type='vmec'):
         os.chdir(self.directory)
         # Get all subdirectories
@@ -1102,8 +1109,8 @@ class vmecOptimization:
         objective_number = []
         dir_list = []
         for dir in dir_list_all:
-            if ((len(dir)>=len(self.name)+1) and 
-                    (dir[0:len(self.name)+1]==self.name+'_') and 
+            if ((len(dir)>=len(self.name)+1) and
+                    (dir[0:len(self.name)+1]==self.name+'_') and
                     (dir[len(self.name)+1].isdigit())):
                 dir_list.append(dir)
                 objective_number.append(int(dir[len(self.name)+1::]))
@@ -1163,16 +1170,16 @@ class vmecOptimization:
                             [X,Y,Z,R] = readVmecObject.compute_position()
                             objective[i] = np.min(R)
                         else:
-                            raise ValueError('''Incorrect objective specified in 
+                            raise ValueError('''Incorrect objective specified in
                                 optimization_plot!''')
                 else:
                     if (self.verbose):
                         print("wout_filename not found in "+dir_list[i]+\
-                          '''. Moving on to next directory Objective function 
+                          '''. Moving on to next directory Objective function
                           will be set to zero.''')
             os.chdir('..')
         return objective
-  
+
     # Note that xn is not multiplied by nfp
 def init_modes(mmax,nmax):
     mnmax = (nmax+1) + (2*nmax+1)*mmax
@@ -1185,24 +1192,29 @@ def init_modes(mmax,nmax):
         xm[index] = 0
         xn[index] = jn
         index += 1
-  
+
     # m /= 0 modes
     for jm in range(1,mmax+1):
         for jn in range(-nmax,nmax+1):
             xm[index] = jm
             xn[index] = jn
             index += 1
-  
+
     return mnmax, xm, xn
- 
+
 # Shape gradient is passed in on [nzeta,ntheta] grid
 # Returns derivatives with respect to rmnc and zmns
-def parameter_derivatives(shape_gradient,readVmecOutputObject,mmax_sensitivity,\
-                          nmax_sensitivity):
-    [Nx,Ny,Nz] = readVmecOutputObject.compute_N(-1)    
+def parameter_derivatives(shape_gradient,readVmecOutputObject,\
+                          mmax_sensitivity=0,nmax_sensitivity=0,\
+                          xm_sensitivity=None,xn_sensitivity=None):
+    [Nx,Ny,Nz] = readVmecOutputObject.compute_N(-1)
 
-    [mnmax_sensitivity, xm_sensitivity, xn_sensitivity] = \
-        init_modes(mmax_sensitivity,nmax_sensitivity)
+    if (xm_sensitivity is None or xn_sensitivity is None):
+        [mnmax_sensitivity, xm_sensitivity, xn_sensitivity] = \
+            init_modes(mmax_sensitivity,nmax_sensitivity)
+    else:
+        assert(len(xm_sensitivity)==len(xn_sensitivity))
+        mnmax_sensitivity = len(xm_sensitivity)
 
     dfdrmnc = np.zeros(mnmax_sensitivity)
     dfdzmns = np.zeros(mnmax_sensitivity)
@@ -1220,11 +1232,10 @@ def parameter_derivatives(shape_gradient,readVmecOutputObject,mmax_sensitivity,\
     dfdzmns = -dfdzmns*readVmecOutputObject.dtheta*readVmecOutputObject.dzeta \
               * readVmecOutputObject.nfp
     return dfdrmnc, dfdzmns, xm_sensitivity, xn_sensitivity
-  
-  
+
     # Check if segment defined by (p1, p2) intersections segment defined by (p2, p4)
 def segment_intersect(p1,p2,p3,p4):
-  
+
     assert(isinstance(p1,(list,np.ndarray)))
     assert(len(p1)==2 and np.array(p1).ndim==1)
     assert(isinstance(p2,(list,np.ndarray)))
@@ -1233,20 +1244,20 @@ def segment_intersect(p1,p2,p3,p4):
     assert(len(p3)==2 and np.array(p3).ndim==1)
     assert(isinstance(p4,(list,np.ndarray)))
     assert(len(p4)==2 and np.array(p4).ndim==1)
-  
+
     l1 = np.array(p3) - np.array(p1)
     l2 = np.array(p2) - np.array(p1)
     l3 = np.array(p4) - np.array(p1)
-  
-    # Check for intersection of bounding box 
+
+    # Check for intersection of bounding box
     b1 = [min(p1[0],p2[0]),min(p1[1],p2[1])]
     b2 = [max(p1[0],p2[0]),max(p1[1],p2[1])]
     b3 = [min(p3[0],p4[0]),min(p3[1],p4[1])]
     b4 = [max(p3[0],p4[0]),max(p3[1],p4[1])]
-  
-    boundingBoxIntersect = ((b1[0] <= b4[0]) and (b2[0] >= b3[0]) 
+
+    boundingBoxIntersect = ((b1[0] <= b4[0]) and (b2[0] >= b3[0])
         and (b1[1] <= b4[1]) and (b2[1] >= b3[1]))
-    return (((l1[0]*l2[1]-l1[1]*l2[0])*(l3[0]*l2[1]-l3[1]*l2[0]) < 0) and 
+    return (((l1[0]*l2[1]-l1[1]*l2[0])*(l3[0]*l2[1]-l3[1]*l2[0]) < 0) and
         boundingBoxIntersect)
 
 def self_intersect(x,y):
@@ -1259,7 +1270,7 @@ def self_intersect(x,y):
     assert (not any(points.count(z) > 1 for z in points))
     # Repeat last point
     points.append(points[0])
-  
+
     npoints = len(points)
     for i in range(npoints-1):
         p1 = points[i]
@@ -1274,6 +1285,3 @@ def self_intersect(x,y):
             if (segment_intersect(p1,p2,p3,p4)):
                 return True
     return False
-  
-      
-      

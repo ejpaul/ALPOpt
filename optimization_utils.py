@@ -63,16 +63,18 @@ class vmecOptimization:
     def __init__(self,vmecInputFilename,name='optimization',\
              callVMEC_function=None,mmax_sensitivity=0,nmax_sensitivity=0,\
              delta_curr=10,delta_pres=10,woutFilename=None,ntheta=100,nzeta=100,\
-             minCurvatureRadius=0.3,verbose=True,callANIMEC_function=None,
+             verbose=True,callANIMEC_function=None,
              xn_sensitivity=None,xm_sensitivity=None):
         if (xn_sensitivity is None or xm_sensitivity is None):
             [mnmax_sensitivity,xm_sensitivity,xn_sensitivity] = \
                 init_modes(mmax_sensitivity,nmax_sensitivity)
+            self.mmax_sensitivity = mmax_sensitivity
+            self.nmax_sensitivity = nmax_sensitivity
         else:
             assert(len(xn_sensitivity)==len(xm_sensitivity))
             self.mmax_sensitivity = np.max(xm_sensitivity)
             self.nmax_sensitivity = np.max(xn_sensitivity)
-            self.mnmax_sensitivity = len(xn_sensitivity)
+            mnmax_sensitivity = len(xn_sensitivity)
 
         self.mnmax_sensitivity = mnmax_sensitivity
         self.xm_sensitivity = xm_sensitivity
@@ -89,13 +91,13 @@ class vmecOptimization:
         self.ntheta = ntheta
         self.nzeta = nzeta
         self.jacobian_threshold = 1e-4
-        self.minCurvatureRadius = minCurvatureRadius
         self.verbose = verbose
         self.vmec_objectives = ['iota','iota_prime','iota_target','well',\
                                 'volume','area','jacobian','radius',\
                                 'normalized_jacoiban','modB_vol','axis_ripple']
         self.input_objectives = ['volume','area','jacobian','radius',\
-                                 'normalized_jacobian','summed_proximity']
+                                 'normalized_jacobian','summed_proximity',\
+                                 'summed_radius']
 
         self.vmecInputObject = VmecInput(vmecInputFilename,ntheta,nzeta)
         self.nfp = self.vmecInputObject.nfp
@@ -112,8 +114,8 @@ class vmecOptimization:
 
         # mpol, ntor for calculaitons must be large enough for sensitivity
             #required
-        self.mmax = max(mmax_sensitivity,mpol_input-1)
-        self.nmax = max(nmax_sensitivity,ntor_input)
+        self.mmax = max(self.mmax_sensitivity,mpol_input-1)
+        self.nmax = max(self.nmax_sensitivity,ntor_input)
         [self.mnmax,self.xm,self.xn] = init_modes(self.mmax,self.nmax)
         # [mnmax_sensitivity,xm_sensitivity,xn_sensitivity] = \
         #     init_modes(mmax_sensitivity,nmax_sensitivity)
@@ -123,8 +125,8 @@ class vmecOptimization:
 
         rmnc = np.zeros(self.mnmax)
         zmns = np.zeros(self.mnmax)
-        rmnc_opt = np.zeros(mnmax_sensitivity)
-        zmns_opt = np.zeros(mnmax_sensitivity)
+        rmnc_opt = np.zeros(self.mnmax_sensitivity)
+        zmns_opt = np.zeros(self.mnmax_sensitivity)
         for imn in range(mnmax_input):
             cond = np.logical_and((self.xm == xm_input[imn]),\
                 (self.xn == xn_input[imn]))
@@ -137,7 +139,10 @@ class vmecOptimization:
                 rmnc_opt[cond] = rbc_input[imn]
                 zmns_opt[cond] = zbs_input[imn]
         self.boundary = np.hstack((rmnc,zmns))
-        self.boundary_opt = np.hstack((rmnc_opt,zmns_opt[1::]))
+        # Remove 0,0 mode from zmns
+        cond = np.logical_not(np.logical_and(xm_sensitivity == 0,xn_sensitivity==0))
+        zmns_opt = zmns_opt[cond]
+        self.boundary_opt = np.hstack((rmnc_opt,zmns_opt))
         self.norm_normal = None
 
         self.vmecOutputObject = None
@@ -397,7 +402,8 @@ class vmecOptimization:
         rmnc_opt_new = boundary_opt_new[0:self.mnmax_sensitivity]
         zmns_opt_new = boundary_opt_new[self.mnmax_sensitivity::]
         # m = 0, n = 0 mode excluded in boundary_opt
-        zmns_opt_new = np.append([0],zmns_opt_new)
+        if (np.min(self.xm_sensitivity)==0 and np.min(np.abs(self.xn_sensitivity)) == 0):
+            zmns_opt_new = np.append([0],zmns_opt_new)
         self.boundary_opt = np.copy(boundary_opt_new)
 
         rmnc_new = self.boundary[0:self.mnmax]
@@ -411,7 +417,7 @@ class vmecOptimization:
         self.boundary = np.hstack((rmnc_new,zmns_new))
 
     def evaluate_input_objective(self,boundary=None,which_objective='volume',\
-                                 update=True,ntheta=None,nzeta=None):
+                                 update=True,**kwargs):
         if (self.verbose):
             if (which_objective=='volume'):
                 print("Evaluating volume objective.")
@@ -427,6 +433,8 @@ class vmecOptimization:
                 print("Evaluating proximity objective.")
             elif (which_objective=='summed_proximity'):
                 print("Evaluating summed proximity objective.")
+            elif (which_objective=='summed_radius'):
+                print("Evaluating summed radius objective.")
         if (which_objective not in self.input_objectives):
             raise ValueError('''incorrect value of which_objective in
                   evaluate_input_objective.''')
@@ -436,7 +444,8 @@ class vmecOptimization:
             raise InputError('''Error! evaluate_input_objective called with incorrect boundary
                 shape.''')
 
-        if ((boundary != self.boundary_opt).any() or self.vmecInputObject is None):
+        if ((np.copy(boundary) != self.boundary_opt).any() 
+            or self.vmecInputObject is None):
             # Save old boundary if update=False
             if (update==False):
                 boundary_old = np.copy(self.boundary_opt)
@@ -486,14 +495,14 @@ class vmecOptimization:
         elif (which_objective == 'normalized_jacobian'):
             objective_function = vmecInputObject.normalized_jacobian()
         elif (which_objective == 'summed_proximity'):
-            objective_function = vmecInputObject.summed_proximity(ntheta=ntheta,\
-                                                                  nzeta=nzeta)
+            objective_function = vmecInputObject.summed_proximity(**kwargs)
+        elif (which_objective == 'summed_radius'):
+            objective_function = vmecInputObject.summed_radius_constraint(**kwargs)
         return objective_function
 
     # Call VMEC with boundary specified by boundaryObjective to evaluate which_objective
-    def evaluate_vmec_objective(self,boundary=None,which_objective='iota',
-                                weight_function=axis_weight,update=True,\
-                                iota_target=None):
+    def evaluate_vmec_objective(self,boundary=None,which_objective='iota',update=True,
+                                **kwargs):
         """
         Evaluates vmec objective function with prescribed boundary
 
@@ -545,8 +554,8 @@ class vmecOptimization:
             boundary_old = np.copy(self.boundary_opt)
         # Evaluate new equilibrium if necessary
         error_code = 0
-        if ((boundary is not None and (boundary!=self.boundary_opt).any()) \
-		or self.vmecOutputObject is None):
+        if ((boundary is not None and (np.copy(boundary)!=self.boundary_opt).any()) \
+            or self.vmecOutputObject is None):
             [error_code,vmecOutputObject] = self.evaluate_vmec(\
                                                 boundary=boundary,update=update)
             if (error_code != 0 and self.verbose):
@@ -562,18 +571,16 @@ class vmecOptimization:
         if (error_code == 0):
             if (which_objective == 'iota'):
                 objective_function = \
-                    vmecOutputObject.evaluate_iota_objective(weight_function)
+                    vmecOutputObject.evaluate_iota_objective(**kwargs)
             elif (which_objective == 'iota_target'):
-                if (iota_target is None):
-                    iota_target = np.zeros(np.shape(self.vmecOutputObject.s_half))
                 objective_function = \
-                    vmecOutputObject.evaluate_iota_target_objective(weight_function,iota_target)
+                    vmecOutputObject.evaluate_iota_target_objective(**kwargs)
             elif (which_objective == 'iota_prime'):
                 objective_function = \
-                    vmecOutputObject.evaluate_iota_prime_objective(weight_function)
+                    vmecOutputObject.evaluate_iota_prime_objective(**kwargs)
             elif (which_objective == 'well'):
                 objective_function = \
-                    vmecOutputObject.evaluate_well_objective(weight_function)
+                    vmecOutputObject.evaluate_well_objective(**kwargs)
             elif (which_objective == 'volume'):
                 objective_function = vmecOutputObject.volume
             elif (which_objective == 'area'):
@@ -591,14 +598,13 @@ class vmecOptimization:
             elif (which_objective == 'modB_vol'):
                 objective_function = vmecOutputObject.evaluate_modB_objective_volume()
             elif (which_objective == 'axis_ripple'):
-                objective_function = vmecOutputObject.evaluate_ripple_objective(weight_function)
+                objective_function = vmecOutputObject.evaluate_ripple_objective(**kwargs)
             return objective_function
         else:
             return 1e12
 
     def vmec_shape_gradient(self,boundary=None,vmecOutputObject=None,which_objective='iota',\
-                            weight_function=axis_weight,update=True,\
-                            iota_target=None):
+                            update=True,weight_function=axis_weight,iota_target=None):
         """
         Evaluates shape gradient for objective function
 
@@ -647,7 +653,8 @@ class vmecOptimization:
                   which_objective)
 
         # Evaluate base equilibrium if necessary
-        if (vmecOutputObject is None and boundary is not None and (boundary!=self.boundary_opt).all()):
+        if (vmecOutputObject is None and boundary is not None \
+            and (np.copy(boundary) != self.boundary_opt).any()):
             [error_code, vmecOutputObject] = self.evaluate_vmec(\
                                                 boundary=boundary,update=update)
             if (error_code != 0):
@@ -845,7 +852,7 @@ class vmecOptimization:
 
     def evaluate_input_objective_grad(self,boundary=None,\
                                       which_objective='volume',update=True,\
-                                      ntheta=None,nzeta=None):
+                                      **kwargs):
         if (self.verbose):
             if (which_objective=='volume'):
                 print("Evaluating volume objective gradient.")
@@ -859,12 +866,15 @@ class vmecOptimization:
                 print("Evaluating normalized_jacobian objective gradient.")
             elif (which_objective=='summed_proximity'):
                 print("Evaluating summed proximity objective gradient.")
+            elif (which_objective=='summed_radius'):
+                print("Evaluating summed radius objective gradient.")
         if (which_objective not in self.input_objectives):
             raise ValueError('''Error! evaluate_input_objective_grad called with incorrect
                 value of which_objective.''')
 
         # Get new input object if necessary
-        if (boundary is not None and (boundary!=self.boundary_opt).any()):
+        if (boundary is not None and 
+            (np.copy(boundary)!=self.boundary_opt).any()):
             if (np.shape(boundary)!=np.shape(self.boundary_opt)):
                 raise ValueError('''Error! evaluate_vmec called with incorrect boundary
                     shape.''')
@@ -899,29 +909,35 @@ class vmecOptimization:
 
         if (which_objective == 'jacobian'):
             [dfdrmnc,dfdzmns] = vmecInputObject.jacobian_derivatives(\
-                                        self.xm_sensitivity,self.xn_sensitivity)
+                               self.xm_sensitivity,self.xn_sensitivity,**kwargs)
         elif (which_objective == 'radius'):
             [dfdrmnc,dfdzmns] = vmecInputObject.radius_derivatives(\
-                                        self.xm_sensitivity,self.xn_sensitivity)
+                               self.xm_sensitivity,self.xn_sensitivity,**kwargs)
         elif (which_objective == 'normalized_jacobian'):
             [dfdrmnc,dfdzmns] = \
                 vmecInputObject.normalized_jacobian_derivatives(\
-                                        self.xm_sensitivity,self.xn_sensitivity)
+                               self.xm_sensitivity,self.xn_sensitivity,**kwargs)
         elif (which_objective == 'area'):
             [dfdrmnc,dfdzmns] = vmecInputObject.area_derivatives(\
-                                        self.xm_sensitivity,self.xn_sensitivity)
+                               self.xm_sensitivity,self.xn_sensitivity,**kwargs)
         elif (which_objective == 'volume'):
             [dfdrmnc,dfdzmns] = vmecInputObject.volume_derivatives(\
-                                        self.xm_sensitivity,self.xn_sensitivity)
+                               self.xm_sensitivity,self.xn_sensitivity,**kwargs)
         elif (which_objective == 'summed_proximity'):
             [dfdrmnc,dfdzmns] = vmecInputObject.summed_proximity_derivatives(\
                                         self.xm_sensitivity,self.xn_sensitivity,\
-                                        ntheta=ntheta,nzeta=nzeta)
-
+                                        **kwargs)
+        elif (which_objective == 'summed_radius'):
+             [dfdrmnc,dfdzmns] = vmecInputObject.summed_radius_constraint_derivatives(\
+                                        self.xm_sensitivity,self.xn_sensitivity,\
+                                        **kwargs)           
+        cond = np.logical_not(np.logical_and(self.xm_sensitivity==0, self.xn_sensitivity==0))
         if (dfdrmnc.ndim==1):
-            gradient = np.hstack((dfdrmnc,dfdzmns[1::]))
+            dfdzmns = dfdzmns[cond]
+            gradient = np.hstack((dfdrmnc,dfdzmns))
         else:
-            gradient = np.vstack((dfdrmnc,dfdzmns[1::,...]))
+            dfdzmns = dfdzmns[cond,...]
+            gradient = np.vstack((dfdrmnc,dfdzmns))
 
         return np.squeeze(gradient)
 
@@ -929,8 +945,7 @@ class vmecOptimization:
     # which_objective and compute gradient
     # If boundary is not specified, boundary will not be updated
     def evaluate_vmec_objective_grad(self,boundary=None,which_objective='iota',\
-                                     weight_function=axis_weight,update=True,\
-                                     iota_target=None):
+                                     update=True,**kwargs):
         if (self.verbose):
             if (which_objective=='iota'):
                 print("Evaluating iota objective gradient.")
@@ -959,7 +974,8 @@ class vmecOptimization:
                 value of which_objective.''')
         rank = MPI.COMM_WORLD.Get_rank()
         # Evaluate base equilibrium if necessary
-        if (((boundary is not None and (boundary!=self.boundary_opt).any())\
+        if (((boundary is not None and 
+              (np.copy(boundary) != self.boundary_opt).any())\
             or self.vmecOutputObject is None)):
             [error_code, vmecOutputObject] = self.evaluate_vmec(\
                                                 boundary=boundary,update=update)
@@ -982,20 +998,19 @@ class vmecOptimization:
         else:
         # Compute gradient
             shape_gradient = self.vmec_shape_gradient(vmecOutputObject=vmecOutputObject,\
-                which_objective=which_objective,\
-                weight_function=weight_function,update=update,\
-                iota_target=iota_target)
+                which_objective=which_objective,update=update,**kwargs)
             [dfdrmnc,dfdzmns,xm_sensitivity,xn_sensitivity] = \
                 parameter_derivatives(shape_gradient,vmecOutputObject,\
                 xm_sensitivity=self.xm_sensitivity,\
                 xn_sensitivity=self.xn_sensitivity)
+            
+        cond = np.logical_not(np.logical_and(self.xm_sensitivity==0,self.xn_sensitivity==0))
         if (dfdrmnc.ndim==1):
-            gradient = np.hstack((dfdrmnc,dfdzmns[1::]))
-        elif (dfdrmnc.ndim==3):
-            gradient = np.vstack((dfdrmnc,dfdzmns[1::,:,:]))
+            dfdzmns = dfdzmns[cond]
+            gradient = np.hstack((dfdrmnc,dfdzmns))
         else:
-            raise RuntimeError('''Incorrect shape of derivatives encountered in
-                evaluate_vmec_objective_grad.''')
+            dfdzmns = dfdzmns[cond,...]
+            gradient = np.vstack((dfdrmnc,dfdzmns))
 
         return np.squeeze(gradient)
 
@@ -1101,7 +1116,8 @@ class vmecOptimization:
                 print('VMEC completed with error code '+str(error_code))
         return error_code
 
-    def optimization_plot(self,which_objective,weight=axis_weight,objective_type='vmec'):
+    def optimization_plot(self,which_objective,weight=axis_weight,\
+                          objective_type='vmec',**kwargs):
         os.chdir(self.directory)
         # Get all subdirectories
         dir_list_all = next(os.walk('.'))[1]
@@ -1138,10 +1154,9 @@ class vmecOptimization:
                     [X,Y,Z,R] = readInputObject.position()
                     objective[i] = np.min(R)
                 elif (which_objective=='summed_proximity'):
-                    objective[i] = readInputObject.summed_proximity(\
-                                   min_curvature_radius=self.minCurvatureRadius)
+                    objective[i] = readInputObject.summed_proximity(**kwargs)
                 elif (which_objective=='effective_distance'):
-                    objective[i] = readInputObject.effectiveDistance()
+                    objective[i] = readInputObject.effectiveDistance(**kwargs)
             elif (objective_type == 'vmec'):
                 wout_filename = 'wout_'+dir_list[i]+'.nc'
                 if (os.path.exists(wout_filename)):

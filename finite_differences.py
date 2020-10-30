@@ -48,7 +48,7 @@ class finiteDifference:
         return self.evaluate(x_epsilon) 
     
 def finiteDifferenceDerivativeRandom(x,function,args=None,epsilon=1e-2,
-                                    method='forward'):
+                                    method='forward',unitvec=None):
     """
     Approximates finite difference derivative with an N-point stencil with  
         step size epsilon. Step is taken in a random direction in parameter
@@ -79,8 +79,10 @@ def finiteDifferenceDerivativeRandom(x,function,args=None,epsilon=1e-2,
     finiteDifferenceObject = finiteDifference(method, epsilon, function, args)
     # Call function once to get size of output
     # Compute random direction for step
-    vec = np.random.standard_normal(x.shape)
-    unitvec = vec / np.sqrt(np.vdot(vec, vec))
+    
+    if (unitvec is None):
+        vec = np.random.standard_normal(x.shape)
+        unitvec = vec / np.sqrt(np.vdot(vec, vec))
     step = unitvec*epsilon
     if (method == 'centered'):
         function_r = finiteDifferenceObject.evaluateEpsilon(x, step)

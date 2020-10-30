@@ -61,10 +61,10 @@ class vmecOptimization:
 
     """
     def __init__(self,vmecInputFilename,name='optimization',\
-             callVMEC_function=None,mmax_sensitivity=0,nmax_sensitivity=0,\
+             callVMEC_function=None,callANIMEC_function=None,mmax_sensitivity=0,\
+             nmax_sensitivity=0,\
              delta_curr=10,delta_pres=10,woutFilename=None,ntheta=100,nzeta=100,\
-             verbose=True,callANIMEC_function=None,
-             xn_sensitivity=None,xm_sensitivity=None):
+             verbose=True,xn_sensitivity=None,xm_sensitivity=None):
         if (xn_sensitivity is None or xm_sensitivity is None):
             [mnmax_sensitivity,xm_sensitivity,xn_sensitivity] = \
                 init_modes(mmax_sensitivity,nmax_sensitivity)
@@ -97,7 +97,7 @@ class vmecOptimization:
                                 'normalized_jacoiban','modB_vol','axis_ripple']
         self.input_objectives = ['volume','area','jacobian','radius',\
                                  'normalized_jacobian','summed_proximity',\
-                                 'summed_radius']
+                                 'summed_radius','curvature']
 
         self.vmecInputObject = VmecInput(vmecInputFilename,ntheta,nzeta)
         self.nfp = self.vmecInputObject.nfp
@@ -196,8 +196,6 @@ class vmecOptimization:
                 directory_name = "delta_curr_"+str(self.counter)
             elif (pres is not None):
                 directory_name = "delta_pres_"+str(self.counter)
-            elif (self.counter == 0):
-                directory_name = self.name+"_"+str(self.counter)
             else:
                 raise RuntimeError('''Error! evaluate_vmec called when equilibrium does not
                   need to be evaluated.''')
@@ -302,6 +300,7 @@ class vmecOptimization:
         vmecOutput_new (vmecOutput) : object corresponding to output of ANIMEC
             evaluations
         """
+        self.counter += 1
         rank = MPI.COMM_WORLD.Get_rank()
         if (rank == 0):
             if (os.getcwd()!=self.directory):
@@ -314,8 +313,6 @@ class vmecOptimization:
                   perturbation (boundary, pres). This behavior is not
                   supported.''')
             if (boundary is not None):
-            # Update equilibrium count
-                self.counter += 1
             # Update boundary
                 self.update_boundary_opt(boundary)
                 directory_name = self.name+"_"+str(self.counter)
@@ -355,6 +352,7 @@ class vmecOptimization:
                         interpolate.InterpolatedUnivariateSpline(s_half,pres)
                     pres = pres_spline(s_spline_half)
                     s_half = s_spline_half
+                inputObject_new.animec = True
                 inputObject_new.ah_aux_f = list(pres)
                 inputObject_new.ah_aux_s = list(s_half)
                 inputObject_new.photp_type = "line_segment"
@@ -373,7 +371,7 @@ class vmecOptimization:
         input_file = MPI.COMM_WORLD.bcast(input_file,root=0)
 
         os.chdir(directory_name)
-        exit_code = self.call_vmec(inputObject_new)
+        exit_code = self.call_vmec(inputObject_new,animec=True)
 
         if (exit_code == 0):
             # Read from new equilibrium
@@ -418,26 +416,11 @@ class vmecOptimization:
 
     def evaluate_input_objective(self,boundary=None,which_objective='volume',\
                                  update=True,**kwargs):
-        if (self.verbose):
-            if (which_objective=='volume'):
-                print("Evaluating volume objective.")
-            elif (which_objective=='area'):
-                print("Evaluating area objective.")
-            elif (which_objective=='jacobian'):
-                print("Evaluating jacobian objective.")
-            elif (which_objective=='radius'):
-                print("Evaluating radius objective.")
-            elif (which_objective=='normalized_jacobian'):
-                print("Evaluating normalized jacobian objective.")
-            elif (which_objective=='proximity'):
-                print("Evaluating proximity objective.")
-            elif (which_objective=='summed_proximity'):
-                print("Evaluating summed proximity objective.")
-            elif (which_objective=='summed_radius'):
-                print("Evaluating summed radius objective.")
         if (which_objective not in self.input_objectives):
             raise ValueError('''incorrect value of which_objective in
                   evaluate_input_objective.''')
+        elif self.verbose:
+            print("Evaluating ",which_objective," objective.")
         if (boundary is None):
             boundary = self.boundary_opt
         if (np.shape(boundary)!=np.shape(self.boundary_opt)):
@@ -498,6 +481,8 @@ class vmecOptimization:
             objective_function = vmecInputObject.summed_proximity(**kwargs)
         elif (which_objective == 'summed_radius'):
             objective_function = vmecInputObject.summed_radius_constraint(**kwargs)
+        elif (which_objective == 'curvature'):
+            objective_function = vmecInputObject.surface_curvature_metric(**kwargs)
         return objective_function
 
     # Call VMEC with boundary specified by boundaryObjective to evaluate which_objective
@@ -517,34 +502,11 @@ class vmecOptimization:
             which_objective and weight_function. If VMEC completes with an
             error, the value of the objective function is set to 1e12.
         """
-        if (self.verbose):
-            if (which_objective=='iota'):
-                print("Evaluating iota objective.")
-            elif (which_objective=='iota_prime'):
-                print("Evaluating iota_prime objective.")
-            elif (which_objective=='iota_target'):
-                print("Evaluating iota_target objective.")
-            elif (which_objective=='well'):
-                print("Evaluating well objective.")
-            elif (which_objective=='volume'):
-                print("Evaluating volume objective.")
-            elif (which_objective=='area'):
-                print("Evaluating area objective.")
-            elif (which_objective=='jacobian'):
-                print("Evaluating jacobian objective.")
-            elif (which_objective=='radius'):
-                print("Evaluating radius objective.")
-            elif (which_objective=='normalized_jacobian'):
-                print("Evaluating normalized jacobian objective.")
-            elif (which_objective=='modB'):
-                print("Evaluating modB objective.")
-            elif (which_objective=='modB_vol'):
-                print("evaluating modB_vol objective.")
-            elif (which_objective=='axis_ripple'):
-                print("Evaluating axis_ripple objective gradient.")
         if (which_objective not in self.vmec_objectives):
             raise ValueError('''Error! evaluate_vmec called with incorrect value of
                   which_objective''')
+        elif self.verbose:
+            print("Evaluating ",which_objective," objective.")
         if (boundary is None):
             boundary = self.boundary_opt
         if (np.shape(boundary)!=np.shape(self.boundary_opt)):
@@ -648,6 +610,7 @@ class vmecOptimization:
         elif (which_objective=='axis_ripple'):
             if (self.verbose):
                 print("Evaluating axis_ripple shape gradient.")
+            delta = self.delta_pres
         else:
             raise ValueError("Error! vmec_shape_gradient called with incorrect value of"+\
                   which_objective)
@@ -781,7 +744,7 @@ class vmecOptimization:
                             (Bz_delta-Bz)*Bz)/delta
 
             shape_gradient = deltaB_dot_B/(2*np.pi*self.vmecOutputObject.mu0)
-        elif (which_objective == 'well'):
+        elif (which_objective == 'well'):        
             [Bx, By, Bz, theta_arclength] = \
                 vmecOutputObject.B_on_arclength_grid()
             pres = vmecOutputObject.pres
@@ -811,17 +774,16 @@ class vmecOptimization:
             shape_gradient = deltaB_dot_B/(self.vmecOutputObject.mu0) + \
                              weight_function(1)
 
-        elif (which_objetive == 'axis_ripple'):
+        elif (which_objective == 'axis_ripple'):
             [Bx, By, Bz, theta_arclength] = \
                 vmecOutputObject.B_on_arclength_grid()
-            pres = vmecOutputObject.pres
-            pres_new = pres + \
-                delta*weight_function(self.vmecOutputObject.s_half)
+            pres_new = delta*weight_function(self.vmecOutputObject.s_half)
 
             [error_code, vmecOutput_delta] = self.evaluate_animec(pres=pres_new)
+            
             if (error_code != 0):
                 raise RuntimeError('''Unable to evaluate VMEC equilibrium with pressure
-                    perturbation in vmec_shaep_gradient.''')
+                    perturbation in vmec_shape_gradient.''')
 
             [Bx_delta, By_delta, Bz_delta, theta_arclength_delta] = \
                 vmecOutput_delta.B_on_arclength_grid()
@@ -838,8 +800,7 @@ class vmecOptimization:
 
             deltaB_dot_B = ((Bx_delta-Bx)*Bx + (By_delta-By)*By + \
                             (Bz_delta-Bz)*Bz)/delta
-            shape_gradient = deltaB_dot_B/(self.vmecOutputObject.mu0) + \
-                             weight_function(1)
+            shape_gradient = deltaB_dot_B + weight_function(1)
 
         elif (which_objective == 'area'):
             shape_gradient = \
@@ -853,24 +814,11 @@ class vmecOptimization:
     def evaluate_input_objective_grad(self,boundary=None,\
                                       which_objective='volume',update=True,\
                                       **kwargs):
-        if (self.verbose):
-            if (which_objective=='volume'):
-                print("Evaluating volume objective gradient.")
-            elif (which_objective=='area'):
-                print("Evaluating area objective gradient.")
-            elif (which_objective=='jacobian'):
-                print("Evaluating jacobian objective gradient.")
-            elif (which_objective=='radius'):
-                print("Evaluating radius objective gradient.")
-            elif (which_objective=='normalized_jacobian'):
-                print("Evaluating normalized_jacobian objective gradient.")
-            elif (which_objective=='summed_proximity'):
-                print("Evaluating summed proximity objective gradient.")
-            elif (which_objective=='summed_radius'):
-                print("Evaluating summed radius objective gradient.")
         if (which_objective not in self.input_objectives):
             raise ValueError('''Error! evaluate_input_objective_grad called with incorrect
                 value of which_objective.''')
+        elif self.verbose:
+            print("Evaluating ",which_objective," objective.")
 
         # Get new input object if necessary
         if (boundary is not None and 
@@ -931,6 +879,10 @@ class vmecOptimization:
              [dfdrmnc,dfdzmns] = vmecInputObject.summed_radius_constraint_derivatives(\
                                         self.xm_sensitivity,self.xn_sensitivity,\
                                         **kwargs)           
+        elif (which_objective == 'curvature'):
+            [dfdrmnc,dfdzmns] = vmecInputObject.surface_curvature_metric_derivatives(\
+                                        self.xm_sensitivity,self.xn_sensitivity,\
+                                        **kwargs)
         cond = np.logical_not(np.logical_and(self.xm_sensitivity==0, self.xn_sensitivity==0))
         if (dfdrmnc.ndim==1):
             dfdzmns = dfdzmns[cond]
@@ -946,32 +898,11 @@ class vmecOptimization:
     # If boundary is not specified, boundary will not be updated
     def evaluate_vmec_objective_grad(self,boundary=None,which_objective='iota',\
                                      update=True,**kwargs):
-        if (self.verbose):
-            if (which_objective=='iota'):
-                print("Evaluating iota objective gradient.")
-            elif (which_objective=='iota_prime'):
-                print("Evaluating iota_prime objective gradient.")
-            elif (which_objective=='iota_target'):
-                print('Evaluating iota_target objective gradient.')
-            elif (which_objective=='well'):
-                print("Evaluating well objective gradient.")
-            elif (which_objective=='volume'):
-                print("Evaluating volume objective gradient.")
-            elif (which_objective=='area'):
-                print("Evaluating area objective gradient.")
-            elif (which_objective=='jacobian'):
-                print("Evaluating jacobian objective gradient.")
-            elif (which_objective=='radius'):
-                print("Evaluating radius objective gradient.")
-            elif (which_objective=='normalized_jacobian'):
-                print("Evaluating normalized_jacobian gradient.")
-            elif (which_objective=='modB_vol'):
-                print("Evaluating modB_vol objective gradient.")
-            elif (which_objective=='axis_ripple'):
-                print("Evaluating axis_ripple objective gradient.")
         if (which_objective not in self.vmec_objectives):
             raise ValueError('''Error! evaluate_vmec_objective_grad called with incorrect \
                 value of which_objective.''')
+        elif self.verbose:
+            print("Evaluating ",which_objective," objective grad.")
         rank = MPI.COMM_WORLD.Get_rank()
         # Evaluate base equilibrium if necessary
         if (((boundary is not None and 
@@ -1026,19 +957,7 @@ class vmecOptimization:
         else:
             return True
 
-#    def test_boundary(self,vmecInputObject=None):
-#        if (vmecInputObject is None):
-#            vmecInputObject = self.vmecInputObject
-#        [X,Y,Z,R] = vmecInputObject.position()
-#        if np.any(R<0):
-#            return True
-#        # Iterate over cross-sections
-#        for izeta in range(self.nzeta):
-#            if (self_intersect(R[izeta,:],Z[izeta,:])):
-#                return True
-#        return False
-
-    def call_vmec(self,vmecInputObject):
+    def call_vmec(self,vmecInputObject,animec=False):
         if (vmecInputObject is None):
             vmecInputObject = copy.deepcopy(vmecInputObject)
 
@@ -1088,7 +1007,10 @@ class vmecOptimization:
         vmecInputObject.print_namelist()
         MPI.COMM_WORLD.Barrier()
         rank = MPI.COMM_WORLD.Get_rank()
-        self.callVMEC_function(vmecInputObject)
+        if (animec==False):
+            self.callVMEC_function(vmecInputObject)
+        else:
+            self.callANIMEC_function(vmecInputObject)
         # Check for VMEC errors
         wout_filename = "wout_"+vmecInputObject.input_filename[6::]+".nc"
         MPI.COMM_WORLD.Barrier()
@@ -1116,86 +1038,8 @@ class vmecOptimization:
                 print('VMEC completed with error code '+str(error_code))
         return error_code
 
-    def optimization_plot(self,which_objective,weight=axis_weight,\
-                          objective_type='vmec',**kwargs):
-        os.chdir(self.directory)
-        # Get all subdirectories
-        dir_list_all = next(os.walk('.'))[1]
-        # Filter those beginning with self.name
-        objective_number = []
-        dir_list = []
-        for dir in dir_list_all:
-            if ((len(dir)>=len(self.name)+1) and
-                    (dir[0:len(self.name)+1]==self.name+'_') and
-                    (dir[len(self.name)+1].isdigit())):
-                dir_list.append(dir)
-                objective_number.append(int(dir[len(self.name)+1::]))
-        # Sort by evaluation number
-        sort_indices = np.argsort(objective_number)
-        dir_list = np.array(dir_list)[sort_indices]
-        objective = np.zeros(len(dir_list))
-        for i in range(len(dir_list)):
-            os.chdir(dir_list[i])
-            if (objective_type == 'input'):
-                input_filename = 'input.'+dir_list[i]
-                readInputObject = VmecInput(input_filename,self.ntheta,\
-                                                self.nzeta)
-                if (which_objective=='volume'):
-                    objective[i] = readInputObject.volume()
-                elif (which_objective=='area'):
-                    objective[i] = readInputObject.area()
-                elif (which_objective=='jacobian'):
-                    jacobian = readInputObject.jacobian()
-                    objective[i] = np.min(jacobian)
-                elif (which_objective=='normalized_jacobian'):
-                    normalized_jacobian = readInputObject.normalized_jacobian()
-                    objective[i] = np.min(normalized_jacobian)
-                elif (which_objective=='radius'):
-                    [X,Y,Z,R] = readInputObject.position()
-                    objective[i] = np.min(R)
-                elif (which_objective=='summed_proximity'):
-                    objective[i] = readInputObject.summed_proximity(**kwargs)
-                elif (which_objective=='effective_distance'):
-                    objective[i] = readInputObject.effectiveDistance(**kwargs)
-            elif (objective_type == 'vmec'):
-                wout_filename = 'wout_'+dir_list[i]+'.nc'
-                if (os.path.exists(wout_filename)):
-                    f = netcdf.netcdf_file(wout_filename,'r',mmap=False)
-                    error_code = f.variables["ier_flag"][()]
-                    if (error_code != 0):
-                        if (self.verbose):
-                            print('VMEC completed with error code '+\
-                              str(error_code)+' in '+dir+\
-                              ". Moving on to next directory. \
-                              Objective function will be set to zero.")
-                    else:
-                        readVmecObject = VmecOutput('wout_'+dir_list[i]+\
-                                                   '.nc',self.ntheta,self.nzeta)
-                        if (which_objective=='iota'):
-                            objective[i] = \
-                                readVmecObject.evaluate_iota_objective(weight)
-                        elif (which_objective=='well'):
-                            objective[i] = \
-                                readVmecObject.evaluate_well_objective(weight)
-                        elif (which_objective=='volume'):
-                            objective[i] = readVmecObject.volume
-                        elif (which_objective=='area'):
-                            objective[i] = readVmecObject.area
-                        elif (which_objective=='radius'):
-                            [X,Y,Z,R] = readVmecObject.compute_position()
-                            objective[i] = np.min(R)
-                        else:
-                            raise ValueError('''Incorrect objective specified in
-                                optimization_plot!''')
-                else:
-                    if (self.verbose):
-                        print("wout_filename not found in "+dir_list[i]+\
-                          '''. Moving on to next directory Objective function
-                          will be set to zero.''')
-            os.chdir('..')
-        return objective
 
-    # Note that xn is not multiplied by nfp
+# Note that xn is not multiplied by nfp
 def init_modes(mmax,nmax):
     mnmax = (nmax+1) + (2*nmax+1)*mmax
     xm = np.zeros(mnmax)
@@ -1248,55 +1092,3 @@ def parameter_derivatives(shape_gradient,readVmecOutputObject,\
               * readVmecOutputObject.nfp
     return dfdrmnc, dfdzmns, xm_sensitivity, xn_sensitivity
 
-    # Check if segment defined by (p1, p2) intersections segment defined by (p2, p4)
-def segment_intersect(p1,p2,p3,p4):
-
-    assert(isinstance(p1,(list,np.ndarray)))
-    assert(len(p1)==2 and np.array(p1).ndim==1)
-    assert(isinstance(p2,(list,np.ndarray)))
-    assert(len(p2)==2 and np.array(p2).ndim==1)
-    assert(isinstance(p3,(list,np.ndarray)))
-    assert(len(p3)==2 and np.array(p3).ndim==1)
-    assert(isinstance(p4,(list,np.ndarray)))
-    assert(len(p4)==2 and np.array(p4).ndim==1)
-
-    l1 = np.array(p3) - np.array(p1)
-    l2 = np.array(p2) - np.array(p1)
-    l3 = np.array(p4) - np.array(p1)
-
-    # Check for intersection of bounding box
-    b1 = [min(p1[0],p2[0]),min(p1[1],p2[1])]
-    b2 = [max(p1[0],p2[0]),max(p1[1],p2[1])]
-    b3 = [min(p3[0],p4[0]),min(p3[1],p4[1])]
-    b4 = [max(p3[0],p4[0]),max(p3[1],p4[1])]
-
-    boundingBoxIntersect = ((b1[0] <= b4[0]) and (b2[0] >= b3[0])
-        and (b1[1] <= b4[1]) and (b2[1] >= b3[1]))
-    return (((l1[0]*l2[1]-l1[1]*l2[0])*(l3[0]*l2[1]-l3[1]*l2[0]) < 0) and
-        boundingBoxIntersect)
-
-def self_intersect(x,y):
-    assert(isinstance(x,(list,np.ndarray)))
-    assert(isinstance(y,(list,np.ndarray)))
-    assert(x.ndim==1 and y.ndim==1 and len(x)==len(y))
-
-    # Make sure there are no repeated points
-    points = (np.array([x,y]).T).tolist()
-    assert (not any(points.count(z) > 1 for z in points))
-    # Repeat last point
-    points.append(points[0])
-
-    npoints = len(points)
-    for i in range(npoints-1):
-        p1 = points[i]
-        p2 = points[i+1]
-        # Compare with all line segments that do not contain x[i] or x[i+1]
-        for j in range(i+2,npoints-1):
-            p3 = points[j]
-            p4 = points[j+1]
-            # Ignore if any points are in common with p1
-            if (p1==p3 or p2==p3 or p1==p4 or p2==p4):
-                continue
-            if (segment_intersect(p1,p2,p3,p4)):
-                return True
-    return False

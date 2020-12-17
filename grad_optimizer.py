@@ -56,7 +56,6 @@ class GradOptimizer:
         self.neval_eq_constraints = 0
         self.neval_eq_constraints_grad = 0                
 
-        self.custom_methods = ('BFGS')
         self.nlopt_methods = ('MMA','SLSQP','CCSAQ','LBFGS','TNEWTON',\
                               'TNEWTON_PRECOND_RESTART','TNEWTON_PRECOND',\
                               'TNEWTON_RESTART','VAR2','VAR1','StOGO',\
@@ -412,8 +411,8 @@ class GradOptimizer:
         self._test_scalar(xtol_abs,'xtol_abs')
         self._test_scalar(xtol_rel,'xtol_rel')
 
-        if (package not in ('nlopt','scipy','custom')):
-            raise ValueError("package must be ['nlopt','scipy','custom']")
+        if (package not in ('nlopt','scipy')):
+            raise ValueError("package must be ['nlopt','scipy']")
             
         if (package == 'nlopt'):
             self._test_method_nlopt(method)
@@ -422,10 +421,6 @@ class GradOptimizer:
         if (package == 'scipy'):
             self._test_method_scipy(method)
             [xopt, fopt, result] = self.scipy_optimize(x,method,**kwargs)
-            
-        if (package == 'custom'):
-            self._test_method_custom(method)
-            [xopt, fopt, result] = self.custom_optimize(x,method,**kwargs)
             
         # Save output    
         np.savetxt('xopt.txt',xopt)
@@ -548,15 +543,6 @@ class GradOptimizer:
                     grad[i,:] = np.array(self.eq_constraints_grad[i](x))
                 else:
                     grad[:,:] = np.zeros([self.n_eq_constraints,self.nparameters])
-
-
-    def custom_optimize(self,x,method='BFGS',**kwargs):
-
-        customOptimizer = BFGS(**kwargs)
-        [xopt,fopt,result] = customOptimizer.BFGS_opt(x,self.objectives_fun,\
-                                              self.objectives_grad_fun)
-        
-        return xopt, fopt, result
     
     def nlopt_optimize(self,x,method='SLSQP',ftol_abs=1e-8,ftol_rel=1e-8,\
                        xtol_abs=1e-8,xtol_rel=1e-8,ineq_tol=1e-8,eq_tol=1e-8):
@@ -655,7 +641,7 @@ class GradOptimizer:
                 nparameters.
             method (str): optimization algorithm to use. Must be in 
                 nlopt_methods.
-            tol (float): tolerance for solver
+            **kwargs : additional keyword args to be passed to scipy.optimize.minimize
         Returns: 
             xopt (list/array): final parameters evaluated during optimization
             fopt (float): final ojective function value
@@ -711,32 +697,37 @@ class GradOptimizer:
         OptimizeResult = scipy.optimize.minimize(self.objectives_fun, x, \
                    method=method,jac=self.objectives_grad_fun,bounds=bounds,\
                    constraints = constraints, **kwargs) 
-        print(optimizeResult.message)
+        print(OptimizeResult.message)
         xopt = OptimizeResult.x
         result = OptimizeResult.status
         fopt = OptimizeResult.fun
         return xopt, fopt, result
         
     def _test_x(self,x):
-        
+        """
+        Test that x has correct dimensions
+        """
         if (len(x) != self.nparameters):
             raise ValueError('Incorrect dimension of x')
             
     def _test_scalar(self,scalar,scalar_name):
+        """
+        Test that scalar_name is a scalar
+        """
         if (not isinstance(scalar,numbers.Number)):
             raise TypeError(scalar_name+' must be a scalar')
             
     def _test_function(self,function,function_name):
+        """
+        Test that function_name is a function
+        """
         if (not callable(function)):
             raise TypeError(function_name+' must be a function')
-            
-    def _test_method_custom(self,method):
-        if (method not in self.custom_methods):
-            raise ValueError('method must be in '+str(self.custom_methods))
-        if (self.ineq_constrained or self.eq_constrained or self.bound_constrained):
-            raise ValueError('method must be unconstrained')
-            
+                        
     def _test_method_nlopt(self,method):
+        """
+        Test that nlopt method matches with specified constraints
+        """
         if (method not in self.nlopt_methods):
             raise ValueError('method must be in '+str(self.nlopt_methods))
         if (self.ineq_constrained and self.eq_constrained):
@@ -752,6 +743,9 @@ class GradOptimizer:
                                 str(self.nlopt_methods_bound_constrained))
                 
     def _test_method_scipy(self,method):
+        """
+        Test that scipy method matches with specified constraints
+        """
         if (method not in self.scipy_methods):
             raise ValueError('method must be in '+str(self.scipy_methods))
         if (self.ineq_constrained):

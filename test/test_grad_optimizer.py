@@ -2,12 +2,11 @@ import unittest
 import sys
 import numpy as np
 import numbers
-import matplotlib.pyplot as plt
 import scipy.optimize
 
 sys.path.append('..')
 
-from gradOptimizer import GradOptimizer
+from grad_optimizer import GradOptimizer
 
 class Test(unittest.TestCase):
 
@@ -59,7 +58,10 @@ class Test(unittest.TestCase):
     def test_ineq(self):
         """
         Check that TypeError is raised if incorrect args are passed.
-        
+        Add ineq. constraint.
+        Check that ineq_constrained), n_ineq_constraints, 
+         self.gradOptimizer.ineq_constraints,
+         self.gradOptimizer.ineq_constraints_grad are set appropriately
         """
         self.assertRaises(TypeError,self.gradOptimizer.add_ineq,\
                          1,scipy.optimize.rosen)
@@ -74,7 +76,9 @@ class Test(unittest.TestCase):
     def test_eq(self):
         """
         Check that TypeError is raised if incorrect args are passed.
-        
+        Add equality constraint
+        Check that eq_constrained, n_eq_constraints, eq_constraints, 
+         eq_constraints_grad are set appropriately
         """
         self.assertRaises(TypeError,self.gradOptimizer.add_eq,\
                          1,scipy.optimize.rosen)
@@ -87,11 +91,24 @@ class Test(unittest.TestCase):
         self.assertEqual(len(self.gradOptimizer.eq_constraints_grad),1)
         
     def test_objective_fun(self):
+        """
+        Check that ValueError is raised if incorrect length is passed
+        Add cubic function
+        Call objectives_fun
+        Check that output is of correct type 
+        Check that neval_objectives, objectives_hist, parameters_hist are
+         set appropriately
+        Call objectives_fun again
+        Check that neval_objectives, objectives_hist, parameters_hist are
+         set appropriately
+        Add objective and check that RuntimeError is raised 
+        Remove the additional objective
+        """
         self.assertRaises(ValueError,self.gradOptimizer.objectives_fun,\
                           [1 for i in range(11)])
         # Add objective 
         self.gradOptimizer.add_objective(lambda x : np.sum(np.array(x) ** 3), \
-                                         lambda x : 3 * np.array(x) **2, 1)        
+                                         lambda x : 3 * np.array(x) ** 2, 1)        
         objective = self.gradOptimizer.objectives_fun([0 for i in range(10)])
         self.assertTrue(isinstance(objective,numbers.Number))
         
@@ -134,6 +151,18 @@ class Test(unittest.TestCase):
         self.gradOptimizer.nobjectives -= 1
                                              
     def test_objectives_grad_fun(self):
+        """
+        Check that ValueError is raised if incorrect length is passed
+        Call objectives_grad_fun
+        Check that output is of correct shape and type
+        Check that neval_objectives_grad and objectives_grad_norm_hist are
+            set appropriately
+        Call objectives_grad_fun again
+        Check that output is of correct shape and type
+        Check that neval_objectives_grad and objectives_grad_norm_hist are
+            set appropriately
+        Check that gradients are equal to each other 
+        """
         self.assertRaises(ValueError,self.gradOptimizer.objectives_grad_fun,\
                           [1 for i in range(11)])
         
@@ -152,6 +181,19 @@ class Test(unittest.TestCase):
         self.assertTrue(np.all(grad2 == grad))
         
     def test_ineq_fun(self):
+        """
+        Check that ValueError is raised if incorrect length of input is passed
+        Add inequality constraint with cubic function
+        Call ineq_fun
+        Check that output is of appropriate type
+        Check that neval_ineq_constraints and ineq_constraints_hist are set
+            appropriately
+        Call ineq_fun again
+        Check that output is of appropriate type
+        Check that neval_ineq_constraints and ineq_constraints_hist are set
+            appropriately
+        Add another inequality constraint and check that RuntimeError is raised
+        """
         self.assertRaises(ValueError,self.gradOptimizer.ineq_fun,\
                           [1 for i in range(11)])
         self.gradOptimizer.reset_all()
@@ -187,6 +229,14 @@ class Test(unittest.TestCase):
         self.gradOptimizer.reset_all()
         
     def test_ineq_grad_fun(self):
+        """
+        Check that ValueError is raised if incorrect shape is passed
+        Add inequality constraint with cubic function
+        Call ineq_grad_fun
+        Check for correct output type
+        Check that neval_ineq_constraints_grad, ineq_constraints_grad_norm_his, 
+         n_ineq_constraints are set appropriately
+        """
         self.assertRaises(ValueError,self.gradOptimizer.ineq_grad_fun,\
                           [1 for i in range(11)])
         self.gradOptimizer.reset_all()
@@ -203,9 +253,38 @@ class Test(unittest.TestCase):
                          self.gradOptimizer.n_ineq_constraints)
         self.assertEqual(self.gradOptimizer.ineq_constraints_grad_norm_hist[0,:],\
                         scipy.linalg.norm(ineq_grad))
-
         
     def test_optimize(self):
+        """
+        Check that ValueError is raised if incorrect shape is passed
+        Check that TyepError is raised if incorrect type of ftolAbs, ftolRel,
+            xtolAbs, xtolRel
+        Check that ValueError is raised if incorrect packaged or algorithm
+        Add rosenbrock function objective
+        Optimize using nlopt TNEWTON
+        Check that optimum matches expected value
+        Perform same test with scipy CG
+        Add rosenbrock function objective with bound constraint (>= 0)
+        Optimize with nlopt SLSQP 
+        Check that optimum matches expected value
+        Perform same test with scipy L-BFGS-B
+        Remove previous objectives, add linear objective with quadratic constraint
+        Optimize using nlopt TNEWTON
+        Check that optimum matches expected value
+        Perform same test with nlopt trust-constr
+        Remove previous objectives, add equality constraints: 
+            min -x1*x2 s.t. sum(x) = 10 
+        Optimize with nlopt SLSQP 
+        Check that optimum matches expected value
+        Optimize with scipy SLSQP, nlopt TNEWTON, and scipy trust-constr
+        Add 2 inequality constraints 
+            min x1 + x2 s.t. 2 - x1^2 - x2^2 >= 0 and x2 >= 0
+        Optimize with nlopt SLSQP and scipy SLSQP
+        Check that optimum matches expected value
+        Add 2 equality constraints
+            min x1 + x2 s.t. 2 - x1^2 - x2^2 = 0 and x2 = 0
+        Check that optimum matches expected value
+        """
         self.assertRaises(ValueError,self.gradOptimizer.optimize,\
                           [1 for i in range(11)])
         self.assertRaises(TypeError,self.gradOptimizer.optimize,\
@@ -287,7 +366,7 @@ class Test(unittest.TestCase):
         self.assertAlmostEqual(fopt,-10*np.sqrt(1/5),places=5)
         self.assertTrue(np.allclose(xopt,-np.sqrt(1/5),atol=1e-6))
 
-        # Test same problem with AUGLAG/trust-constr
+        # Test inequality constraint
         self.gradOptimizer.reset_all()
         self.gradOptimizer.add_objective(lambda x : np.sum(x), \
                                         lambda x : np.ones(np.size(x)),1)
@@ -303,8 +382,8 @@ class Test(unittest.TestCase):
         [xopt,fopt,result] = \
             self.gradOptimizer.optimize(x,package='scipy',method='trust-constr',\
                                        tol=1e-10)
-        self.assertAlmostEqual(fopt,-10*np.sqrt(1/5),places=5)
-        self.assertTrue(np.allclose(xopt,-np.sqrt(1/5),atol=1e-6))
+        self.assertAlmostEqual(fopt,-10*np.sqrt(1/5),places=2)
+        self.assertTrue(np.allclose(xopt,-np.sqrt(1/5),atol=1e-3))
         
         # Test equality constrained problem 
         # min -x1*x2 s.t. sum(x) = 10 
@@ -326,7 +405,7 @@ class Test(unittest.TestCase):
         self.assertAlmostEqual(fopt,-25,places=8)
         self.assertTrue(np.allclose(xopt,5,atol=1e-5))
         
-        # Test same problem with AUGLAG/trust-constr
+        # Test same problem with TNEWTON/trust-constr
         self.gradOptimizer.reset_all()
         self.gradOptimizer.nparameters = 2
         self.gradOptimizer.add_objective(lambda x : -x[0]*x[1], \

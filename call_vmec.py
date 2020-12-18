@@ -4,7 +4,7 @@ import os
 import numpy as np
 from scipy.io import netcdf
 try:
-    from vmec_class import VMEC
+    from simsopt.modules.vmec.core import VMEC
     from mpi4py import MPI
 except:
     raise RuntimeError('Unable to load modules needed for interface.')

@@ -129,7 +129,7 @@ class Test(unittest.TestCase):
         Test call from new directory with modified input_filename
         """
         try:
-            from vmec_class import VMEC
+            from simsopt.modules.vmec.core import VMEC
             from mpi4py import MPI
         except:
             raise RuntimeError('Unable to load modules needed for interface.')

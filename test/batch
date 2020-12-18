@@ -1,0 +1,11 @@
+#!/bin/csh
+#SBATCH --job-name=QAS
+#SBATCH --mem 10000
+#SBATCH --export=ALL                                                            
+#SBATCH -N 1 # number of nodes
+#SBATCH -n 2 # number of cores
+#SBATCH -o slurm.%N.%j.out # STDOUT
+#SBATCH -e slurm.%N.%j.err # STDERR
+#SBATCH -t 0-12:00 # time (D-HH:MM)
+
+srun -n 2 /u/epaul/STELLOPT_gcc/bin/xvmec2000 input.rotating_ellipse

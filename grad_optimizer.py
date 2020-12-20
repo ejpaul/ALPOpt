@@ -2,8 +2,8 @@ import numbers
 import numpy as np
 import sys
 import scipy.linalg
+import scipy.optimize
 import nlopt
-from BFGS import *
 
 """
 A class used for gradient-based optimization

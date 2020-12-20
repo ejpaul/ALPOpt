@@ -144,8 +144,14 @@ class CallVmecInterface:
         # Set desired input data
         raxis_cc = np.zeros(102)
         zaxis_cs = np.zeros(102)
-        raxis_cc[0:len([inputObject.raxis])] = np.copy(inputObject.raxis)
-        zaxis_cs[0:len([inputObject.zaxis])] = np.copy(inputObject.zaxis)
+        if isinstance(inputObject.raxis,(list,np.ndarray)):
+            raxis_cc[0:len(inputObject.raxis)] = np.copy(inputObject.raxis)
+        else:
+            raxis_cc[0] = inputObject.raxis
+        if isinstance(inputObject.zaxis,(list,np.ndarray)):
+            zaxis_cs[0:len(inputObject.zaxis)] = np.copy(inputObject.zaxis)
+        else:
+            zaxis_cs[0] = inputObject.zaxis           
         self.vmecObject.indata.raxis_cc = np.copy(raxis_cc)
         self.vmecObject.indata.zaxis_cs = np.copy(zaxis_cs)
         if inputObject.curtor is not None:

@@ -508,7 +508,7 @@ class VmecOptimization:
         elif (which_objective == 'jacobian'):
             objective_function = vmecInputObject.jacobian()
         elif (which_objective == 'radius'):
-            [X,Y,Z,R] = vmecInputObject.position()
+            [x,y,z,R] = vmecInputObject.position()
             objective_function = R
         elif (which_objective == 'normalized_jacobian'):
             objective_function = vmecInputObject.normalized_jacobian()
@@ -608,7 +608,7 @@ class VmecOptimization:
             elif (which_objective == 'jacobian'):
                 objective_function = vmecOutputObject.jacobian(-1)
             elif (which_objective == 'radius'):
-                [X,Y,Z,R] = vmecOutputObject.position(-1)
+                [x,y,z,R] = vmecOutputObject.position(-1)
                 objective_function = R
             elif (which_objective == 'normalized_jacobian'):
                 objective_function = vmecOutputObject.normalized_jacobian(-1)

@@ -63,7 +63,7 @@ def sine_IFT(xm,xn,nfp,theta,zeta,fmn):
     return f
 
 @jit(nopython=True,cache=True)
-def proximity_surface(R,Z,tR,tz,dldtheta,min_curvature_radius=0.2,exp_weight=0.01,\
+def proximity_surface(R,z,tR,tz,dldtheta,min_curvature_radius=0.2,exp_weight=0.01,\
                       derivatives=False):
     """
     Compute proximity function for curves defined as 
@@ -80,29 +80,29 @@ def proximity_surface(R,Z,tR,tz,dldtheta,min_curvature_radius=0.2,exp_weight=0.0
         if derivatives:
             [Qp[izeta,:],dQpdp1[izeta,:,:],dQpdp2[izeta,:,:,:],\
                  dQpdtau2[izeta,:,:,:],dQpdlprime[izeta,:]] = \
-                 proximity_slice(R[izeta,:],Z[izeta,:],tR[izeta,:],\
+                 proximity_slice(R[izeta,:],z[izeta,:],tR[izeta,:],\
                                  tz[izeta,:],dldtheta[izeta,:],
             derivatives=derivatives,min_curvature_radius=min_curvature_radius,\
                                  exp_weight=exp_weight)
         else:
             [Qp[izeta,:],dQpdp1[izeta,:,:],dQpdp2[izeta,:,:,:],\
                  dQpdtau2[izeta,:,:,:],dQpdlprime[izeta,:]] = \
-                 proximity_slice(R[izeta,:],Z[izeta,:],tR[izeta,:],\
+                 proximity_slice(R[izeta,:],z[izeta,:],tR[izeta,:],\
                           tz[izeta,:],dldtheta[izeta,:],derivatives=derivatives,\
                 min_curvature_radius=min_curvature_radius,exp_weight=exp_weight)
     return Qp, dQpdp1, dQpdp2, dQpdtau2, dQpdlprime
 
 @jit(nopython=True,cache=True)
-def global_curvature_surface(R,Z,tR,tz):
+def global_curvature_surface(R,z,tR,tz):
     nzeta = len(R[:,0])
     ntheta = len(R[0,:])
     global_curvature_radius = np.zeros((nzeta,ntheta))
     for izeta in range(nzeta):
         for itheta in range(ntheta):
-            p1 = np.array([R[izeta,itheta],Z[izeta,itheta]])
+            p1 = np.array([R[izeta,itheta],z[izeta,itheta]])
             this_global_curvature = np.zeros(ntheta)
             for ithetap in range(ntheta):
-                p2 = np.array([R[izeta,ithetap],Z[izeta,ithetap]])
+                p2 = np.array([R[izeta,ithetap],z[izeta,ithetap]])
                 t2 = np.array([tR[izeta,ithetap],tz[izeta,ithetap]])
                 if (np.any(p1 != p2)):
                     this_global_curvature[ithetap] = self_contact(p1,p2,t2)
@@ -113,19 +113,19 @@ def global_curvature_surface(R,Z,tR,tz):
 
 #TODO : test for correct sizes
 @jit(nopython=True,cache=True)
-def point_in_polygon(R, Z, R0, Z0):
+def point_in_polygon(R, z, R0, z0):
     """
-    Determines if point on the axis (R0,Z0) lies within boundary defined by
-        (R,Z), a toroidal slice of the boundary
+    Determines if point on the axis (R0,z0) lies within boundary defined by
+        (R,z), a toroidal slice of the boundary
         
     Args:
         R (float array): radius defining toroidal slice of boundary
-        Z (float array): height defining toroidal slice of boundary
+        z (float array): height defining toroidal slice of boundary
             evaluation
         R0 (float): radius of trial axis point
-        Z0 (float): height of trial axis point
+        z0 (float): height of trial axis point
     Returns:
-        oddNodes (bool): True if (R0,Z0) lies in (R,Z)
+        oddNodes (bool): True if (R0,z0) lies in (R,z)
         
     """
 
@@ -133,8 +133,8 @@ def point_in_polygon(R, Z, R0, Z0):
     oddNodes = False
     j = ntheta-1
     for i in range(ntheta):
-        if ((Z[i] < Z0 and Z[j] >= Z0) or (Z[j] < Z0 and Z[i] >= Z0)):
-            if (R[i] + (Z0 - Z[i]) / (Z[j] - Z[i]) * (R[j] - R[i]) < R0):
+        if ((z[i] < z0 and z[j] >= z0) or (z[j] < z0 and z[i] >= z0)):
+            if (R[i] + (z0 - z[i]) / (z[j] - z[i]) * (R[j] - R[i]) < R0):
                 oddNodes = not oddNodes
         j = i
     return oddNodes
@@ -205,7 +205,7 @@ def min_max_indices_2d(varName,inputFilename):
     return min(index_1), min(index_2), max(index_1), max(index_2)
 
 @jit(nopython=True,cache=True)
-def proximity_slice(R,Z,tR,tZ,dldtheta,min_curvature_radius=0.2,exp_weight=0.01,\
+def proximity_slice(R,z,tR,tz,dldtheta,min_curvature_radius=0.2,exp_weight=0.01,\
                     derivatives=False):
 #     assert(np.all((np.shape(R) == np.shape(Z))) and \
 #            np.all((np.shape(R) == np.shape(tR))) and \
@@ -218,13 +218,13 @@ def proximity_slice(R,Z,tR,tZ,dldtheta,min_curvature_radius=0.2,exp_weight=0.01,
     dQpdtau2 = np.zeros((ntheta,ntheta,2))
     dQpdlprime = np.zeros((ntheta,ntheta))
     for itheta in range(ntheta):
-        p1 = np.array([R[itheta],Z[itheta]])
+        p1 = np.array([R[itheta],z[itheta]])
         Sc = np.zeros(ntheta)
         if derivatives:
             dScdp1 = np.zeros((ntheta,2))
         for ithetap in range(ntheta):
-            p2 = np.array([R[ithetap],Z[ithetap]])
-            tau2 = np.array([tR[ithetap],tZ[ithetap]])
+            p2 = np.array([R[ithetap],z[ithetap]])
+            tau2 = np.array([tR[ithetap],tz[ithetap]])
             if (np.any(p1 != p2)):
                 # Sc(p1,p2)
                 Sc[ithetap] = self_contact_exp(p1,p2,tau2,min_curvature_radius,exp_weight)
@@ -243,7 +243,7 @@ def proximity_slice(R,Z,tR,tZ,dldtheta,min_curvature_radius=0.2,exp_weight=0.01,
 @jit(nopython=True,cache=True)
 def proximity_derivatives_func(theta,zeta,nfp,xm_sensitivity,xn_sensitivity,\
                                   dQpdp1,dQpdp2,dQpdtau2,dQpdlprime,\
-                                  dRdtheta,dZdtheta,lprime):
+                                  dRdtheta,dzdtheta,lprime):
 
     mnmax_sensitivity = len(xm_sensitivity)
     nzeta = len(dRdtheta[:,0])
@@ -256,27 +256,27 @@ def proximity_derivatives_func(theta,zeta,nfp,xm_sensitivity,xn_sensitivity,\
             angle = xm_sensitivity[imn]*theta[izeta,:] \
                 - nfp*xn_sensitivity[imn]*zeta[izeta,:]
             dRdrmnc = np.cos(angle)
-            dZdzmns = np.sin(angle)
+            dzdzmns = np.sin(angle)
             d2Rdthetadrmnc = -xm_sensitivity[imn]*np.sin(angle)
-            d2Zdthetadzmns = xm_sensitivity[imn]*np.cos(angle)
+            d2zdthetadzmns = xm_sensitivity[imn]*np.cos(angle)
             dlprimedrmnc = dRdtheta[izeta,:]*d2Rdthetadrmnc/lprime[izeta,:]
-            dlprimedzmns = dZdtheta[izeta,:]*d2Zdthetadzmns/lprime[izeta,:]
+            dlprimedzmns = dzdtheta[izeta,:]*d2zdthetadzmns/lprime[izeta,:]
             dtauRdrmnc = d2Rdthetadrmnc/lprime[izeta,:] \
                 - dRdtheta[izeta,:]*dlprimedrmnc/lprime[izeta,:]**2
             dtauRdzmns = - dRdtheta[izeta,:]*dlprimedzmns/lprime[izeta,:]**2
-            dtauZdrmnc = - dZdtheta[izeta,:]*dlprimedrmnc/lprime[izeta,:]**2
-            dtauZdzmns = d2Zdthetadzmns/lprime[izeta,:] \
-                - dZdtheta[izeta,:]*dlprimedzmns/lprime[izeta,:]**2
+            dtauzdrmnc = - dzdtheta[izeta,:]*dlprimedrmnc/lprime[izeta,:]**2
+            dtauzdzmns = d2zdthetadzmns/lprime[izeta,:] \
+                - dzdtheta[izeta,:]*dlprimedzmns/lprime[izeta,:]**2
             for itheta in range(ntheta):
                 dQpdrmnc[izeta,imn,itheta] = dQpdp1[izeta,itheta,0]*dRdrmnc[itheta] \
                     + np.sum(dQpdp2[izeta,itheta,:,0]*dRdrmnc) \
                     + np.sum(dQpdtau2[izeta,itheta,:,0]*dtauRdrmnc) \
-                    + np.sum(dQpdtau2[izeta,itheta,:,1]*dtauZdrmnc) \
+                    + np.sum(dQpdtau2[izeta,itheta,:,1]*dtauzdrmnc) \
                     + np.dot(dQpdlprime[izeta,itheta,:],dlprimedrmnc)
-                dQpdzmns[izeta,imn,itheta] = dQpdp1[izeta,itheta,1]*dZdzmns[itheta] \
-                    + np.sum(dQpdp2[izeta,itheta,:,1]*dZdzmns) \
+                dQpdzmns[izeta,imn,itheta] = dQpdp1[izeta,itheta,1]*dzdzmns[itheta] \
+                    + np.sum(dQpdp2[izeta,itheta,:,1]*dzdzmns) \
                     + np.sum(dQpdtau2[izeta,itheta,:,0]*dtauRdzmns) \
-                    + np.sum(dQpdtau2[izeta,itheta,:,1]*dtauZdzmns) \
+                    + np.sum(dQpdtau2[izeta,itheta,:,1]*dtauzdzmns) \
                     + np.dot(dQpdlprime[izeta,itheta,:],dlprimedzmns)
     return dQpdrmnc, dQpdzmns
 
@@ -379,10 +379,10 @@ def segment_intersect(p1,p2,p3,p4):
         boundingBoxIntersect)
 
 @jit(nopython=True,cache=True)
-def surface_intersect(R,Z):  
+def surface_intersect(R,z):  
     nzeta = len(R[:,0])
     for izeta in range(nzeta):
-        if (self_intersect(R[izeta,:],Z[izeta,:])):
+        if (self_intersect(R[izeta,:],z[izeta,:])):
             return izeta
     return -1
         

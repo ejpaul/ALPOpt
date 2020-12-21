@@ -1,5 +1,4 @@
 import os
-import logging
 import numpy as np
 from scipy.io import netcdf
 import sys
@@ -19,7 +18,6 @@ class VmecOutput:
         Returns:
             VmecOutput
         """
-        logging.basicConfig()
         self.wout_filename = wout_filename
         self.input_filename = 'input.' + wout_filename.split('.')[0][5::]
         self.directory = os.getcwd()
@@ -285,9 +283,9 @@ class VmecOutput:
             zeta (float array): toroidal grid for evaluation (optional)
             
         Returns:
-            X (float array): x component of position vector
-            Y (float array): y component of position vector
-            Z (float array): height component of position vector
+            x (float array): x component of position vector
+            y (float array): y component of position vector
+            z (float array): height component of position vector
             R (float array): radius component of position vector
 
         """
@@ -309,19 +307,19 @@ class VmecOutput:
 #         Z = sine_IFT(xm,xn,1,theta,zeta,this_zmns)
         if (isinstance(theta,(list,np.ndarray))):
             R = np.zeros(np.shape(theta))
-            Z = np.zeros(np.shape(zeta))
+            z = np.zeros(np.shape(zeta))
         else:
             R = 0
-            Z = 0
+            z = 0
         for im in range(self.mnmax):
             angle = self.xm[im] * theta - self.xn[im] * zeta
             cos_angle = np.cos(angle)
             sin_angle = np.sin(angle)
             R += this_rmnc[im] * cos_angle
-            Z += this_zmns[im] * sin_angle
-        X = R * np.cos(zeta)
-        Y = R * np.sin(zeta)
-        return X, Y, Z, R
+            z += this_zmns[im] * sin_angle
+        x = R * np.cos(zeta)
+        y = R * np.sin(zeta)
+        return x, y, z, R
     
     def B_covariant(self, isurf=-1, theta=None, zeta=None, full=False):
         if (theta is None and zeta is None):
@@ -487,10 +485,10 @@ class VmecOutput:
         return d2Bdtheta2, d2Bdzeta2, d2Bdthetadzeta
     
     def minor_radius(self, isurf=1):
-        [X, Y, Z, R] = self.position(isurf=isurf)
-        [dxdtheta, dxdzeta, dydtheta, dydzeta, dZdtheta, dZdzeta] = \
+        [x, y, z, R] = self.position(isurf=isurf)
+        [dxdtheta, dxdzeta, dydtheta, dydzeta, dzdtheta, dzdzeta] = \
                 self.position_first_derivatives(isurf=isurf)
-        averaged_area = np.sum(dZdtheta * R)*self.dtheta*self.dzeta*self.nfp \
+        averaged_area = np.sum(dzdtheta * R)*self.dtheta*self.dzeta*self.nfp \
             / (2*np.pi)
         return np.sqrt(averaged_area/np.pi)
     
@@ -835,15 +833,14 @@ class VmecOutput:
             d2ydzeta2 (float array): second derivative of y wrt toroidal angle
             d2ydthetadzeta (float array): second derivative of y wrt toroidal
                 and poloidal angles
-            d2Zdtheta2 (float array): second derivative of height wrt poloidal
+            d2zdtheta2 (float array): second derivative of height wrt poloidal
                 angle
-            d2Zdzeta2 (float array): second derivative of height wrt toroidal
+            d2zdzeta2 (float array): second derivative of height wrt toroidal
                 angle
-            d2Zdthetadzeta (float array): second derivative of height wrt
+            d2zdthetadzeta (float array): second derivative of height wrt
                 toroidal and poloidal angles
             
         """
-        logger = logging.getLogger(__name__)
         this_rmnc = self.rmnc[isurf,:]
         this_zmns = self.zmns[isurf,:] 
         if (theta is None and zeta is None):
@@ -873,10 +870,10 @@ class VmecOutput:
        
         d2Rdtheta2 = np.zeros(np.shape(theta))
         d2Rdzeta2 = np.zeros(np.shape(theta))
-        d2Zdtheta2 = np.zeros(np.shape(theta))
-        d2Zdzeta2 = np.zeros(np.shape(theta))
+        d2zdtheta2 = np.zeros(np.shape(theta))
+        d2zdzeta2 = np.zeros(np.shape(theta))
         d2Rdthetadzeta = np.zeros(np.shape(theta))
-        d2Zdthetadzeta = np.zeros(np.shape(theta))
+        d2zdthetadzeta = np.zeros(np.shape(theta))
         dRdtheta = np.zeros(np.shape(theta))
         dzdtheta = np.zeros(np.shape(theta))
         dRdzeta = np.zeros(np.shape(theta))
@@ -889,11 +886,11 @@ class VmecOutput:
             sin_angle = np.sin(angle)
             R = R + this_rmnc[im] * cos_angle
             d2Rdtheta2 -= self.xm[im] * self.xm[im] * this_rmnc[im] * cos_angle
-            d2Zdtheta2 -= self.xm[im] * self.xm[im] * this_zmns[im] * sin_angle
+            d2zdtheta2 -= self.xm[im] * self.xm[im] * this_zmns[im] * sin_angle
             d2Rdzeta2 -= self.xn[im] * self.xn[im] * this_rmnc[im] * cos_angle
-            d2Zdzeta2 -= self.xn[im] * self.xn[im] * this_zmns[im] * sin_angle
+            d2zdzeta2 -= self.xn[im] * self.xn[im] * this_zmns[im] * sin_angle
             d2Rdthetadzeta += self.xm[im] * self.xn[im] * this_rmnc[im] * cos_angle
-            d2Zdthetadzeta += self.xm[im] * self.xn[im] * this_zmns[im] * sin_angle
+            d2zdthetadzeta += self.xm[im] * self.xn[im] * this_zmns[im] * sin_angle
             dRdtheta -= self.xm[im] * this_rmnc[im] * sin_angle
             dzdtheta += self.xm[im] * this_zmns[im] * cos_angle
             dRdzeta += self.xn[im] * this_rmnc[im] * sin_angle
@@ -908,7 +905,7 @@ class VmecOutput:
         d2xdthetadzeta = d2Rdthetadzeta * np.cos(zeta) - dRdtheta * np.sin(zeta)
         d2ydthetadzeta = d2Rdthetadzeta * np.sin(zeta) + dRdtheta * np.cos(zeta)
         return d2xdtheta2, d2xdzeta2, d2xdthetadzeta, d2ydtheta2, d2ydzeta2, \
-                d2ydthetadzeta, d2Zdtheta2, d2Zdzeta2, d2Zdthetadzeta
+                d2ydthetadzeta, d2zdtheta2, d2zdzeta2, d2zdthetadzeta
     
     def mean_curvature(self, isurf=-1):
         """
@@ -921,25 +918,25 @@ class VmecOutput:
             H (float array): mean curvature on angular grid
             
         """        
-        [dxdtheta, dxdzeta, dydtheta, dydzeta, dZdtheta, dZdzeta] = \
+        [dxdtheta, dxdzeta, dydtheta, dydzeta, dzdtheta, dzdzeta] = \
                 self.position_first_derivatives(isurf)
         [d2xdtheta2, d2xdzeta2, d2xdthetadzeta, d2ydtheta2, d2ydzeta2, \
-                d2ydthetadzeta, d2Zdtheta2, d2Zdzeta2, d2Zdthetadzeta] = \
+                d2ydthetadzeta, d2zdtheta2, d2zdzeta2, d2zdthetadzeta] = \
                 self.position_second_derivatives(isurf)
         
-        norm_x = dydtheta * dZdzeta - dydzeta * dZdtheta
-        norm_y = dZdtheta * dxdzeta - dZdzeta * dxdtheta
+        norm_x = dydtheta * dzdzeta - dydzeta * dzdtheta
+        norm_y = dzdtheta * dxdzeta - dzdzeta * dxdtheta
         norm_z = dxdtheta * dydzeta - dxdzeta * dydtheta
         norm_normal = np.sqrt(norm_x**2 + norm_y**2 + norm_z**2)
         nx = norm_x / norm_normal
         ny = norm_y / norm_normal
         nz = norm_z / norm_normal
-        E = dxdtheta * dxdtheta + dydtheta * dydtheta + dZdtheta * dZdtheta
-        F = dxdtheta * dxdzeta + dydtheta * dydzeta + dZdtheta * dZdzeta
-        G = dxdzeta * dxdzeta + dydzeta * dydzeta + dZdzeta * dZdzeta
-        e = nx * d2xdtheta2 + ny * d2ydtheta2 + nz * d2Zdtheta2
-        f = nx * d2xdthetadzeta + ny * d2ydthetadzeta + nz * d2Zdthetadzeta
-        g = nx * d2xdzeta2 + ny * d2ydzeta2 + nz * d2Zdzeta2
+        E = dxdtheta * dxdtheta + dydtheta * dydtheta + dzdtheta * dzdtheta
+        F = dxdtheta * dxdzeta + dydtheta * dydzeta + dzdtheta * dzdzeta
+        G = dxdzeta * dxdzeta + dydzeta * dydzeta + dzdzeta * dzdzeta
+        e = nx * d2xdtheta2 + ny * d2ydtheta2 + nz * d2zdtheta2
+        f = nx * d2xdthetadzeta + ny * d2ydthetadzeta + nz * d2zdthetadzeta
+        g = nx * d2xdzeta2 + ny * d2ydzeta2 + nz * d2zdzeta2
         H = (e*G - 2*f*F + g*E) / (E*G - F*F)
         return H
   
@@ -963,15 +960,12 @@ class VmecOutput:
             dNdzmns (float array): derivative of jacobian with respect to zbs
             
         """
-
-        logger = logging.getLogger(__name__)
         if (theta is None and zeta is None):
             zeta = self.zetas_2d
             theta = self.thetas_2d
         if (theta.ndim != zeta.ndim):
-            logger.error('Error! Incorrect dimensions for theta '
+            raise ValueError('Error! Incorrect dimensions for theta '
                          'and zeta in jacobian_derivatives.')
-            sys.exit(0)
         if (theta.ndim == 1):
             dim1 = len(theta)
             dim2 = 1
@@ -979,9 +973,8 @@ class VmecOutput:
             dim1 = len(theta[:,0])
             dim2 = len(theta[0,:])
         else:
-            logger.error('Error! Incorrect dimensions for theta '
+            raise ValueError('Error! Incorrect dimensions for theta '
                          'and zeta in jacobian_derivatives.')
-            sys.exit(0)
 
         [dxdtheta, dxdzeta, dydtheta, dydzeta, dzdtheta, dzdzeta] = \
                 self.position_first_derivatives(-1, theta, zeta)
@@ -1046,10 +1039,9 @@ class VmecOutput:
             zeta (float array): toroidal grid for evaluation (optional)
         Returns:
             dRdrmnc (float array): derivative of radius with respect to rbc
-            dZdzmns (float array): derivative of radius with respect to zbs
+            dzdzmns (float array): derivative of radius with respect to zbs
             
         """
-        logger = logging.getLogger(__name__)
         if (theta is None and zeta is None):
             zeta = self.zetas_2d
             theta = self.thetas_2d
@@ -1128,7 +1120,6 @@ class VmecOutput:
             
         """
 
-        logger = logging.getLogger(__name__)
         if (theta is None and zeta is None):
             zeta = self.zetas_2d
             theta = self.thetas_2d
@@ -1189,23 +1180,23 @@ class VmecOutput:
         zmns_end = self.zmns[-1,:]
         
         # Evaluate at last full mesh grid point
-        [dXdu_end, dXdv_end, dYdu_end, dYdv_end, dZdu_end, dZdv_end] = \
+        [dxdu_end, dxdv_end, dydu_end, dydv_end, dzdu_end, dzdv_end] = \
             self.position_first_derivatives(-1)
             
         [Bsupu_end, Bsupv_end] = self.B_contravariant(full=True,theta=self.thetas_2d,\
                                                      zeta=self.zetas_2d,isurf=-1)
-        [X, Y, Z_end, R_end] = self.position(theta=self.thetas_2d,\
+        [x, y, z_end, R_end] = self.position(theta=self.thetas_2d,\
                                                      zeta=self.zetas_2d,isurf=-1)
         
-        Bx_end = Bsupu_end * dXdu_end + Bsupv_end * dXdv_end
-        By_end = Bsupu_end * dYdu_end + Bsupv_end * dYdv_end
-        Bz_end = Bsupu_end * dZdu_end + Bsupv_end * dZdv_end
+        Bx_end = Bsupu_end * dxdu_end + Bsupv_end * dxdv_end
+        By_end = Bsupu_end * dydu_end + Bsupv_end * dydv_end
+        Bz_end = Bsupu_end * dzdu_end + Bsupv_end * dzdv_end
         
         theta_arclength = np.zeros(np.shape(self.zetas_2d))
         for izeta in range(self.nzeta):
             for itheta in range(1, self.ntheta):
                 dr = np.sqrt((R_end[izeta, itheta] - R_end[izeta, itheta-1])**2 \
-                             + (Z_end[izeta, itheta] - Z_end[izeta, itheta-1])**2)
+                             + (z_end[izeta, itheta] - z_end[izeta, itheta-1])**2)
                 theta_arclength[izeta, itheta] = \
                             theta_arclength[izeta, itheta-1] + dr
         

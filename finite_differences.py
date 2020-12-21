@@ -74,9 +74,9 @@ def finite_difference_derivative_random(x,function,args=None,epsilon=1e-2,
 
     if isinstance(x, list):
         x = np.array(x)
-    elif not isinstance(x,np.ndarray):
-        x = np.array([x])
-    assert(x.ndim<2)
+    if isinstance(x,np.ndarray):
+        if (x.ndim>=2):
+            raise ValueError('x must have less than 2 dims.')
     
     finiteDifferenceObject = FiniteDifference(function, args)
     # Call function once to get size of output
@@ -124,10 +124,10 @@ def finite_difference_derivative(x,function, args=None, epsilon=1e-2,
   
     if isinstance(x, list):
         x = np.array(x)
-    elif not isinstance(x,np.ndarray):
-        x = np.array([x])
-
-    assert(x.ndim<2)
+    if isinstance(x,np.ndarray):
+        if (x.ndim>=2):
+            raise ValueError('x must have less than 2 dims.')
+            
     finiteDifferenceObject = FiniteDifference(function, args)
     # Call function once to get size of output
     test_function = finiteDifferenceObject.evaluate(x)

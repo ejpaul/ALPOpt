@@ -282,6 +282,7 @@ class GradOptimizer:
         
         np.savetxt('objectives_hist.txt',self.objectives_hist)
         np.savetxt('objective_hist.txt',self.objective_hist)
+        np.savetxt('parameters_hist.txt',self.parameters_hist)
         
         return objective
                 
